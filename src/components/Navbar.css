@@ -1,0 +1,29 @@
+.nav-item-dropdown:hover .dropdown-menu {
+  display: block;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  min-width: 200px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  border-top: 3px solid var(--red);
+  list-style: none;
+  padding: 10px 0;
+  z-index: 100;
+}
+
+.dropdown-menu li a {
+  padding: 10px 20px;
+  display: block;
+  font-size: 0.8rem !important;
+  color: var(--ink) !important;
+}
+
+.dropdown-menu li a:hover {
+  background: var(--cream);
+  color: var(--red) !important;
+}
