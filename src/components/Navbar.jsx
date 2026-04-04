@@ -3,10 +3,17 @@ import { Link } from 'react-router-dom';
 import { Globe, Lock, ChevronDown } from 'lucide-react';
 import { t } from '../translations';
 
+// IMPORT LOGO UJC
+import logoUJC from '../assets/logo.png';
+
 export default function Navbar({ lang, setLang }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const text = t[lang];
+
+  // BRAND COLORS UJC
+  const brandNavy = '#101869';
+  const brandYellow = '#fdfb06';
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -20,36 +27,37 @@ export default function Navbar({ lang, setLang }) {
 
   return (
     <>
-      {/* ── 1. TOPBAR (Hanya Akses Utilitas & Portal) ── */}
+      {/* ── 1. TOPBAR (Akses Utilitas & Portal) ── */}
       <div style={{ 
-        background: 'var(--ink)', color: 'var(--mist)', fontSize: '0.75rem', 
+        background: brandNavy, color: 'white', fontSize: '0.75rem', 
         padding: '0.6rem 5%', display: 'flex', justifyContent: 'flex-end', 
         alignItems: 'center', position: 'relative', zIndex: 1100 
       }}>
         {/* Kumpulan Akses Internal & Portal */}
-        <div style={{ display: 'flex', gap: '20px', fontWeight: 600, alignItems: 'center' }}>
-          <Link to="/mitra" style={{ color: 'var(--mist)', textDecoration: 'none', transition: '0.2s' }}>
+        <div style={{ display: 'flex', gap: '20px', fontWeight: 700, alignItems: 'center' }}>
+          <Link to="/mitra" className="topbar-link">
             {lang === 'ID' ? 'MITRA' : 'パートナー'}
           </Link>
-          <Link to="/portal-pegawai" style={{ color: 'var(--mist)', textDecoration: 'none', transition: '0.2s' }}>
+          <Link to="/portal-pegawai" className="topbar-link">
             {lang === 'ID' ? 'PEGAWAI' : 'スタッフ'}
           </Link>
-          <Link to="/alumni" style={{ color: 'var(--mist)', textDecoration: 'none', transition: '0.2s' }}>
-            {lang === 'ID' ? 'ALUMNI' : '卒業生'}
-          </Link>
           <Link to="/login" style={{ 
-            background: 'var(--red)', 
-            color: 'var(--white)', 
-            padding: '5px 12px', 
-            borderRadius: '4px', 
+            background: brandYellow, 
+            color: brandNavy, 
+            padding: '6px 14px', 
+            borderRadius: '6px', 
             textDecoration: 'none',
-            fontSize: '0.7rem',
+            fontSize: '0.75rem',
             display: 'flex',
             alignItems: 'center',
-            gap: '5px',
-            boxShadow: '0 4px 10px rgba(198,40,40,0.3)',
-            transition: '0.2s'
-          }}>
+            gap: '6px',
+            fontWeight: 800,
+            boxShadow: `0 4px 10px rgba(253, 251, 6, 0.2)`,
+            transition: 'transform 0.2s'
+          }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+          >
             <Lock size={12} /> {lang === 'ID' ? 'LOGIN SISWA' : '学生ログイン'}
           </Link>
         </div>
@@ -57,8 +65,10 @@ export default function Navbar({ lang, setLang }) {
 
       {/* ── 2. MAIN NAVBAR (Navigasi Publik) ── */}
       <header style={{ 
-        background: 'var(--white)', borderBottom: '2px solid var(--red)', 
-        boxShadow: '0 4px 20px var(--shadow)', position: 'sticky', 
+        background: 'white', 
+        borderBottom: `3px solid ${brandYellow}`, 
+        boxShadow: '0 4px 20px rgba(0,0,0,0.05)', 
+        position: 'sticky', 
         top: 0, zIndex: 1000 
       }}>
         <div style={{ 
@@ -67,16 +77,14 @@ export default function Navbar({ lang, setLang }) {
         }}>
           
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', textDecoration: 'none' }}>
-            <div style={{ 
-              width: '45px', height: '45px', borderRadius: '50%', background: 'var(--red)', 
-              color: 'var(--white)', display: 'grid', placeItems: 'center', 
-              fontFamily: 'var(--font-serif)', fontSize: '1.5rem', fontWeight: 700 
-            }}>桜</div>
+            {/* LOGO UJC */}
+            <img src={logoUJC} alt="UJC Logo" style={{ height: '45px', objectFit: 'contain' }} />
+            
             <div style={{ lineHeight: 1.1 }}>
-              <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-                {text.lpk_name || 'Universal Japan Course'}
+              <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', fontWeight: 800, color: brandNavy, margin: 0, letterSpacing: '0.5px' }}>
+                {text.lpk_name || 'UNIVERSAL JAPAN COURSE'}
               </h1>
-              <p style={{ fontSize: '0.65rem', color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700, margin: 0 }}>
+              <p style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700, margin: 0 }}>
                 {text.lpk_sub || 'Japan Vocational Training'}
               </p>
             </div>
@@ -85,9 +93,9 @@ export default function Navbar({ lang, setLang }) {
           <nav>
             <ul style={{ 
               display: 'flex', gap: '2rem', listStyle: 'none', 
-              alignItems: 'center', fontSize: '0.85rem', fontWeight: 600, margin: 0, padding: 0 
+              alignItems: 'center', fontSize: '0.85rem', fontWeight: 700, margin: 0, padding: 0 
             }}>
-              <li><Link to="/" style={{ color: 'var(--ink)', textDecoration: 'none' }}>{text.home}</Link></li>
+              <li><Link to="/" className="nav-link">{text.home}</Link></li>
               
               <li 
                 ref={dropdownRef}
@@ -95,7 +103,7 @@ export default function Navbar({ lang, setLang }) {
                 onMouseLeave={() => setIsDropdownOpen(false)}
                 style={{ position: 'relative', cursor: 'pointer', padding: '10px 0' }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--ink)' }}>
+                <div className="nav-link" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   {lang === 'ID' ? 'Profil LPK' : '会社概要'} <ChevronDown size={14} />
                 </div>
 
@@ -103,7 +111,7 @@ export default function Navbar({ lang, setLang }) {
                   <ul style={{ 
                     position: 'absolute', top: '100%', left: '-10px', background: 'white', 
                     minWidth: '220px', listStyle: 'none', padding: '10px 0', margin: 0,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.15)', borderTop: '3px solid var(--red)',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.1)', borderTop: `3px solid ${brandNavy}`,
                     borderRadius: '0 0 8px 8px', animation: 'fadeInDown 0.2s ease-out'
                   }}>
                     <li><Link to="/visi-misi" className="dropdown-link">{lang === 'ID' ? 'Visi & Misi' : 'ビジョンとミッション'}</Link></li>
@@ -113,30 +121,42 @@ export default function Navbar({ lang, setLang }) {
                 )}
               </li>
 
-              <li><Link to="/program" style={{ color: 'var(--ink)', textDecoration: 'none' }}>{text.program}</Link></li>
-              <li><Link to="/kontak" style={{ color: 'var(--ink)', textDecoration: 'none' }}>{text.contact}</Link></li>
+              <li><Link to="/program" className="nav-link">{text.program}</Link></li>
+              <li><Link to="/kontak" className="nav-link">{text.contact}</Link></li>
             </ul>
           </nav>
 
           <div style={{ display: 'flex', alignItems: 'center' }}>
+            {/* Tombol Ganti Bahasa */}
             <button 
               onClick={() => setLang(lang === 'ID' ? 'JP' : 'ID')}
               style={{ 
-                background: 'var(--cream)', border: '1px solid var(--mist)', 
-                borderRadius: '20px', padding: '0.4rem 1rem', fontSize: '0.8rem', 
-                fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', 
-                cursor: 'pointer', color: 'var(--ink)', transition: '0.2s'
+                background: brandNavy, border: 'none', 
+                borderRadius: '20px', padding: '0.5rem 1.2rem', fontSize: '0.8rem', 
+                fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', 
+                cursor: 'pointer', color: 'white', transition: '0.2s',
+                boxShadow: '0 2px 5px rgba(16,24,105,0.2)'
               }}
+              onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
+              onMouseLeave={e => e.currentTarget.style.opacity = 1}
             >
-              <Globe size={14} /> {lang === 'ID' ? '🇯🇵 JP' : '🇮🇩 ID'}
+              <Globe size={14} color={brandYellow} /> {lang === 'ID' ? '🇯🇵 JP' : '🇮🇩 ID'}
             </button>
           </div>
         </div>
       </header>
 
+      {/* ── STYLING KHUSUS (HOVER) ── */}
       <style>{`
-        .dropdown-link { display: block; padding: 12px 20px; text-decoration: none; color: var(--ink); font-size: 0.85rem; font-weight: 500; transition: all 0.2s ease; }
-        .dropdown-link:hover { background: var(--cream); color: var(--red); padding-left: 25px; }
+        .topbar-link { color: rgba(255,255,255,0.8); text-decoration: none; transition: 0.2s; }
+        .topbar-link:hover { color: #fdfb06; }
+        
+        .nav-link { color: #1e293b; text-decoration: none; transition: 0.2s; }
+        .nav-link:hover { color: #101869; }
+        
+        .dropdown-link { display: block; padding: 12px 20px; text-decoration: none; color: #334155; font-size: 0.85rem; font-weight: 600; transition: all 0.2s ease; }
+        .dropdown-link:hover { background: #f8fafc; color: #101869; padding-left: 25px; border-left: 3px solid #fdfb06; }
+        
         @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </>

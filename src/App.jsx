@@ -13,7 +13,11 @@ import DashboardPendaftaran from './pages/Pendaftaran/DashboardPendaftaran';
 import DashboardKeuangan from './pages/Keuangan/DashboardKeuangan';
 import DashboardDokumen from './pages/Dokumen/DashboardDokumen';
 import DashboardPelatihan from './pages/Pelatihan/DashboardPelatihan';
+
+// ── IMPORT KOMPONEN SUPERVISOR & DIREKTUR ──
 import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
+import ManajemenRole from './pages/Supervisor/ManajemenRole';
+import DashboardDirektur from './pages/Direktur/DashboardDirektur';
 
 // ── IMPORT KOMPONEN CETAK CV ──
 import PrintRirekisho from './components/PrintRirekisho'; 
@@ -47,8 +51,8 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Tambahkan '/print-cv' agar Navbar dan Footer tidak muncul saat mencetak CV
-  const isSystemRoute = ['/pendaftaran', '/keuangan', '/dokumen', '/pelatihan', '/supervisor', '/print-cv'].some(route => location.pathname.startsWith(route));
+  // Tambahkan '/direktur' agar Navbar dan Footer tidak muncul di sistem C-Level
+  const isSystemRoute = ['/pendaftaran', '/keuangan', '/dokumen', '/pelatihan', '/supervisor', '/direktur', '/print-cv'].some(route => location.pathname.startsWith(route));
 
   return (
     <>
@@ -62,11 +66,17 @@ function AppContent() {
           <Route path="/ujc-admin-gate-2026" element={<AdminGate newsData={newsData} setNewsData={setNewsData} lang={lang} />} />
 
           {/* ── RUTE CONVEYOR ── */}
-          <Route path="/pendaftaran/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDAFTARAN', 'DIREKTUR']}><DashboardPendaftaran /></ProtectedRoute>} />
+          <Route path="/pendaftaran/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDAFTARAN', 'DIREKTUR', 'SUPERVISOR']}><DashboardPendaftaran /></ProtectedRoute>} />
           <Route path="/keuangan/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['KEUANGAN', 'DIREKTUR']}><DashboardKeuangan /></ProtectedRoute>} />
           <Route path="/dokumen/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'DIREKTUR']}><DashboardDokumen /></ProtectedRoute>} />
           <Route path="/pelatihan/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PELATIHAN', 'DIREKTUR']}><DashboardPelatihan /></ProtectedRoute>} />
+          
+          {/* ── RUTE SUPERVISOR ── */}
           <Route path="/supervisor/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><DashboardSupervisor /></ProtectedRoute>} />
+          <Route path="/supervisor/manajemen-role" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><ManajemenRole /></ProtectedRoute>} />
+
+          {/* ── RUTE DIREKTUR (Akses dibuka untuk SUPERVISOR) ── */}
+          <Route path="/direktur/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DIREKTUR', 'SUPERVISOR']}><DashboardDirektur /></ProtectedRoute>} />
 
           {/* ── RUTE CETAK CV (TAB BARU) ── */}
           <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><PrintRirekisho /></ProtectedRoute>} />
