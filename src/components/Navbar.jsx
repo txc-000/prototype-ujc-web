@@ -38,9 +38,8 @@ export default function Navbar({ lang, setLang }) {
           <Link to="/mitra" className="topbar-link">
             {lang === 'ID' ? 'MITRA' : 'パートナー'}
           </Link>
-          <Link to="/portal-pegawai" className="topbar-link">
-            {lang === 'ID' ? 'PEGAWAI' : 'スタッフ'}
-          </Link>
+          
+          {/* TOMBOL LOGIN SUDAH DIUPDATE DAN TERSAMBUNG KE /login */}
           <Link to="/login" style={{ 
             background: brandYellow, 
             color: brandNavy, 
@@ -58,7 +57,7 @@ export default function Navbar({ lang, setLang }) {
           onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'none'}
           >
-            <Lock size={12} /> {lang === 'ID' ? 'LOGIN SISWA' : '学生ログイン'}
+            <Lock size={12} /> {lang === 'ID' ? 'LOGIN' : 'ログイン'}
           </Link>
         </div>
       </div>

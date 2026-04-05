@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 import { 
     TrendingUp, Users, Building2, Briefcase, 
-    CheckCircle2, BarChart, Target, Activity, Clock, PieChart
+    CheckCircle2, BarChart, Target, Activity, Clock, PieChart, LogOut
 } from 'lucide-react';
 
 const brandNavy = '#101869';
@@ -20,6 +21,8 @@ export default function DashboardDirektur() {
     const [productivity, setProductivity] = useState([]);
     const [chartData, setChartData] = useState([]);
 
+    const navigate = useNavigate();
+
     useEffect(() => {
         fetchHelicopterData();
     }, []);
@@ -27,13 +30,12 @@ export default function DashboardDirektur() {
     const fetchHelicopterData = async () => {
         setLoading(true);
         try {
-            const { data: students } = await supabase.from('students').select('tahap_sekarang, status_akhir, perusahaan_tujuan, created_at');
-            const { data: jobs } = await supabase.from('job_orders').select('kuota, terisi, status, perusahaan');
-            const { data: employees } = await supabase
-                .from('employees')
-                .select('id, id_karyawan, nama_lengkap, is_online, last_seen, master_role (nama_role)')
-                .order('is_online', { ascending: false }).order('last_seen', { ascending: false });
-            const { data: studentCreators } = await supabase.from('students').select('created_by').not('created_by', 'is', null);
+            const { data: students } = await supabase.from('students').select('id, tahap_sekarang, status_akhir, perusahaan_tujuan, job_order_id, created_at, created_by');
+            const { data: jobs } = await supabase.from('job_orders').select('id, kuota, status, perusahaan');
+            const { data: employees } = await supabase.from('employees').select('id, id_karyawan, nama_lengkap, status, is_online, last_seen, master_role (nama_role)').order('is_online', { ascending: false }).order('last_seen', { ascending: false });
+            
+            // Ambil data log aktivitas (tidak masalah jika masih kosong/error)
+            const { data: logs } = await supabase.from('activity_logs').select('user_id');
             
             if (students && jobs) {
                 const total = students.length;
@@ -41,20 +43,17 @@ export default function DashboardDirektur() {
                 const rate = total > 0 ? Math.round((lulus / total) * 100) : 0;
 
                 const jobsAktif = jobs.filter(j => j.status?.toLowerCase() !== 'selesai' && j.status?.toLowerCase() !== 'cancel');
-                const totalDemand = jobsAktif.reduce((sum, j) => sum + (j.kuota || 0), 0);
-                const totalSupply = jobsAktif.reduce((sum, j) => sum + (j.terisi || 0), 0);
                 const kaishaUnik = new Set(jobs.map(j => j.perusahaan)).size;
 
-                setKpi({
-                    totalSiswa: total, siswaLulus: lulus, konversiRate: rate, totalKaisha: kaishaUnik, totalJobAktif: jobsAktif.length, totalKebutuhan: totalDemand, totalTerpenuhi: totalSupply
-                });
+                const totalDemand = jobsAktif.reduce((sum, j) => sum + (j.kuota || 0), 0);
+                const totalSupply = students.filter(s => s.status_akhir?.toLowerCase() === 'lulus' && (s.job_order_id != null || s.perusahaan_tujuan != null)).length;
 
-                // Pipeline Funnel
+                setKpi({ totalSiswa: total, siswaLulus: lulus, konversiRate: rate, totalKaisha: kaishaUnik, totalJobAktif: jobsAktif.length, totalKebutuhan: totalDemand, totalTerpenuhi: totalSupply });
+
                 setPipeline(['Pemberkasan', 'Keuangan', 'Pelatihan', 'Penempatan'].map(stage => ({
                     label: stage, count: students.filter(s => s.tahap_sekarang?.toLowerCase() === stage.toLowerCase() && s.status_akhir?.toLowerCase() === 'proses').length
                 })));
 
-                // Simulasi Data Diagram Bar (Distribusi Siswa per Status)
                 const gagalCount = students.filter(s => s.status_akhir?.toLowerCase() === 'gagal').length;
                 const prosesCount = students.filter(s => s.status_akhir?.toLowerCase() === 'proses').length;
                 
@@ -64,21 +63,64 @@ export default function DashboardDirektur() {
                     { label: 'Gagal / Mundur', value: gagalCount, color: '#ef4444' }
                 ]);
 
-                const kaishaCount = students.filter(s => s.status_akhir?.toLowerCase() === 'lulus' && s.perusahaan_tujuan).reduce((acc, curr) => { acc[curr.perusahaan_tujuan] = (acc[curr.perusahaan_tujuan] || 0) + 1; return acc; }, {});
+                const kaishaCount = students.filter(s => s.status_akhir?.toLowerCase() === 'lulus' && s.perusahaan_tujuan).reduce((acc, curr) => { 
+                    acc[curr.perusahaan_tujuan] = (acc[curr.perusahaan_tujuan] || 0) + 1; 
+                    return acc; 
+                }, {});
                 setTopKaisha(Object.entries(kaishaCount).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 3));
             }
 
             if (employees) {
                 setEmployeeList(employees);
-                if (studentCreators) {
-                    const inputCounts = studentCreators.reduce((acc, curr) => { acc[curr.created_by] = (acc[curr.created_by] || 0) + 1; return acc; }, {});
-                    const prodData = employees.map(emp => ({
-                        nama: emp.nama_lengkap, role: emp.master_role?.nama_role || 'Tidak ada role', jumlahInput: inputCounts[emp.id] || 0
-                    })).sort((a, b) => b.jumlahInput - a.jumlahInput);
-                    setProductivity(prodData);
+                
+                // 1. FILTER: Hapus Direktur, Admin, dan Super Admin dari daftar produktivitas
+                const operationalStaff = employees.filter(emp => {
+                    const role = emp.master_role?.nama_role?.toUpperCase() || '';
+                    return !['DIREKTUR', 'ADMIN', 'SUPER ADMIN'].includes(role);
+                });
+
+                // 2. HITUNG AKTIVITAS
+                let inputCounts = {};
+                
+                if (logs && logs.length > 0) {
+                    // Gunakan data Activity Log yang sebenarnya (Semua divisi)
+                    inputCounts = logs.reduce((acc, curr) => { 
+                        if(curr.user_id) acc[curr.user_id] = (acc[curr.user_id] || 0) + 1; 
+                        return acc; 
+                    }, {});
+                } else if (students) {
+                    // Fallback: Jika tabel log masih kosong, gunakan pendaftaran sementara
+                    inputCounts = students.reduce((acc, curr) => { 
+                        if(curr.created_by) acc[curr.created_by] = (acc[curr.created_by] || 0) + 1; 
+                        return acc; 
+                    }, {});
                 }
+                
+                const prodData = operationalStaff.map(emp => ({
+                    nama: emp.nama_lengkap, 
+                    role: emp.master_role?.nama_role || 'Tidak ada role', 
+                    jumlahInput: inputCounts[emp.id] || 0
+                })).sort((a, b) => b.jumlahInput - a.jumlahInput);
+                
+                setProductivity(prodData);
             }
-        } catch (error) { console.error("Gagal memuat data:", error); } finally { setLoading(false); }
+        } catch (error) { 
+            console.error("Gagal memuat data Executive Dashboard:", error); 
+        } finally { 
+            setLoading(false); 
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) await supabase.from('employees').update({ is_online: false, last_seen: new Date() }).eq('id', user.id);
+            await supabase.auth.signOut();
+            navigate('/login');
+        } catch (error) {
+            console.error('Error logout:', error);
+            navigate('/login');
+        }
     };
 
     const timeAgo = (dateString) => {
@@ -92,10 +134,10 @@ export default function DashboardDirektur() {
         }
     };
 
-    if (loading) return <div style={{ padding: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><h2>Menyusun Laporan Eksekutif...</h2></div>;
+    if (loading) return <div style={{ padding: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc' }}><h2 style={{color: brandNavy}}>Menyusun Laporan Eksekutif...</h2></div>;
 
     const jobFulfillmentRate = kpi.totalKebutuhan > 0 ? Math.round((kpi.totalTerpenuhi / kpi.totalKebutuhan) * 100) : 0;
-    const maxChartValue = Math.max(...chartData.map(d => d.value), 1);
+    const maxChartValue = chartData.length > 0 ? Math.max(...chartData.map(d => d.value), 1) : 1;
 
     return (
         <div style={{ padding: '40px', fontFamily: 'sans-serif', background: '#f8fafc', minHeight: '100vh' }}>
@@ -103,10 +145,17 @@ export default function DashboardDirektur() {
             <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <div>
                     <h1 style={{ fontSize: '2.2rem', color: brandNavy, margin: '0 0 5px 0', fontWeight: 900 }}>Executive Dashboard</h1>
-                    <p style={{ color: '#64748b', margin: 0, fontSize: '1.1rem' }}>Helicopter View: Ringkasan Performa & Kinerja SDM</p>
+                    <p style={{ color: '#64748b', margin: 0, fontSize: '1.1rem' }}>Helicopter View: Ringkasan Performa & Kinerja SDM LPK</p>
                 </div>
-                <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', fontWeight: 700, color: '#1e293b' }}>
-                    📅 {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <div style={{ background: 'white', padding: '10px 20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', fontWeight: 700, color: '#1e293b' }}>
+                        📅 {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                    </div>
+                    
+                    <button onClick={handleLogout} style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', transition: '0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#fecaca'} onMouseLeave={e => e.currentTarget.style.background = '#fee2e2'}>
+                        <LogOut size={18} /> Keluar Sistem
+                    </button>
                 </div>
             </header>
 
@@ -148,7 +197,7 @@ export default function DashboardDirektur() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '10px' }}>
                         {pipeline.map((p, idx) => {
                             const maxPipe = Math.max(...pipeline.map(x => x.count), 1);
-                            const widthPct = (p.count / maxPipe) * 100;
+                            const widthPct = maxPipe === 0 ? 0 : (p.count / maxPipe) * 100;
                             return (
                                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                     <div style={{ width: '100px', fontSize: '0.85rem', fontWeight: 700, color: '#64748b', textAlign: 'right' }}>{p.label}</div>
@@ -168,25 +217,25 @@ export default function DashboardDirektur() {
             {/* --- ROW 3: TARGET PEMENUHAN & TOP KAISHA --- */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '30px' }}>
                 <div style={cardStyle}>
-                    <h3 style={cardHeaderStyle}><Target size={20}/> Target Pemenuhan Kuota (Supply vs Demand)</h3>
+                    <h3 style={cardHeaderStyle}><Target size={20}/> Target Pemenuhan Kuota Job Order (Real-Time)</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '40px', marginTop: '30px' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontWeight: 700, color: '#1e293b' }}>
-                                <span>Permintaan (Demand): {kpi.totalKebutuhan} Orang</span>
-                                <span>Terpenuhi: {kpi.totalTerpenuhi} Orang</span>
+                                <span>Total Permintaan Kaisha (Demand): {kpi.totalKebutuhan} Orang</span>
+                                <span style={{color: '#10b981'}}>Siswa Ditempatkan (Supply): {kpi.totalTerpenuhi} Orang</span>
                             </div>
                             <div style={{ width: '100%', height: '24px', background: '#e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
                                 <div style={{ width: `${jobFulfillmentRate}%`, height: '100%', background: jobFulfillmentRate >= 100 ? '#10b981' : brandNavy, transition: 'width 1s ease-in-out' }}></div>
                             </div>
-                            <p style={{ textAlign: 'right', fontSize: '0.85rem', color: '#64748b', marginTop: '8px', fontWeight: 700 }}>{jobFulfillmentRate}% Terpenuhi dari target keseluruhan</p>
+                            <p style={{ textAlign: 'right', fontSize: '0.85rem', color: '#64748b', marginTop: '8px', fontWeight: 700 }}>{jobFulfillmentRate}% Terpenuhi dari keseluruhan Job Order Aktif</p>
                         </div>
                     </div>
                 </div>
 
                 <div style={cardStyle}>
-                    <h3 style={cardHeaderStyle}><TrendingUp size={20}/> Top 3 Penempatan</h3>
+                    <h3 style={cardHeaderStyle}><TrendingUp size={20}/> Top 3 Penempatan Kaisha</h3>
                     <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        {topKaisha.length === 0 ? <p style={{ color: '#94a3b8', fontSize:'0.9rem' }}>Belum ada data penempatan lulusan.</p> : 
+                        {topKaisha.length === 0 ? <p style={{ color: '#94a3b8', fontSize:'0.9rem' }}>Belum ada data penempatan lulusan ke Kaisha.</p> : 
                             topKaisha.map((kaisha, idx) => (
                                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '12px 15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                                     <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -204,33 +253,42 @@ export default function DashboardDirektur() {
             {/* --- ROW 4: KINERJA & KEHADIRAN KARYAWAN --- */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div style={cardStyle}>
-                    <h3 style={cardHeaderStyle}><Activity size={20}/> Status Kehadiran Sistem (Real-Time)</h3>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '20px' }}>Memantau karyawan yang sedang menggunakan aplikasi.</p>
+                    <h3 style={cardHeaderStyle}><Activity size={20}/> Status Kehadiran Karyawan</h3>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '20px' }}>Memantau aktivitas login karyawan di sistem.</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto', paddingRight: '5px' }}>
-                        {employeeList.map(emp => (
-                            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px', borderLeft: `4px solid ${emp.is_online ? '#10b981' : '#cbd5e1'}` }}>
-                                <div>
-                                    <div style={{ fontWeight: 800, color: '#1e293b' }}>{emp.nama_lengkap}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{emp.master_role?.nama_role} ({emp.id_karyawan})</div>
+                        {employeeList.map(emp => {
+                            const isAktif = emp.status === 'Aktif' || !emp.status;
+                            const statusColor = emp.is_online ? '#10b981' : '#cbd5e1';
+                            
+                            return (
+                                <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: isAktif ? '#f8fafc' : '#f1f5f9', borderRadius: '8px', borderLeft: `4px solid ${isAktif ? statusColor : '#ef4444'}`, opacity: isAktif ? 1 : 0.6 }}>
+                                    <div>
+                                        <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {emp.nama_lengkap} 
+                                            {!isAktif && <span style={{background: '#fee2e2', color: '#991b1b', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase'}}>{emp.status}</span>}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{emp.master_role?.nama_role} ({emp.id_karyawan})</div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        {emp.is_online ? (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '0.8rem', fontWeight: 700 }}><div style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 5px #10b981' }}></div> Online</span>
+                                        ) : (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#94a3b8', fontSize: '0.8rem', fontWeight: 700 }}><Clock size={12}/> {timeAgo(emp.last_seen)}</span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    {emp.is_online ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '0.8rem', fontWeight: 700 }}><div style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 5px #10b981' }}></div> Online</span>
-                                    ) : (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#94a3b8', fontSize: '0.8rem', fontWeight: 700 }}><Clock size={12}/> {timeAgo(emp.last_seen)}</span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </div>
 
                 <div style={cardStyle}>
-                    <h3 style={cardHeaderStyle}><TrendingUp size={20}/> Produktivitas Input Data</h3>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '20px' }}>Peringkat karyawan berdasarkan jumlah data siswa yang diproses.</p>
+                    {/* UPDATE: Judul diganti karena sekarang mengakomodir semua divisi */}
+                    <h3 style={cardHeaderStyle}><TrendingUp size={20}/> Produktivitas Kinerja Operasional</h3>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '20px' }}>Peringkat karyawan operasional berdasarkan jumlah aktivitas pemrosesan data.</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
                         {productivity.length === 0 ? (
-                            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Belum ada data metrik. Pastikan fitur <i>Activity Log</i> aktif.</p>
+                            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Belum ada data aktivitas.</p>
                         ) : productivity.map((prod, idx) => (
                             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #f1f5f9' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -242,7 +300,6 @@ export default function DashboardDirektur() {
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
                                     <div style={{ fontSize: '1.2rem', fontWeight: 900, color: prod.jumlahInput === 0 ? '#ef4444' : '#10b981' }}>{prod.jumlahInput} <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Aktivitas</span></div>
-                                    {prod.jumlahInput === 0 && <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700 }}>Tidak Aktif</span>}
                                 </div>
                             </div>
                         ))}

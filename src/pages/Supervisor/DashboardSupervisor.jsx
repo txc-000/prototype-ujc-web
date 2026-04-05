@@ -3,15 +3,14 @@ import { supabase } from '../../lib/supabase';
 import EditProfileModal from './EditProfileModal'; 
 import JobOrderDetail from './JobOrderDetail'; 
 import MasterMitra from './MasterMitra'; 
-import MasterPengguna from './MasterPengguna'; // <-- IMPORT MASTER PENGGUNA
+import MasterPengguna from './MasterPengguna';
 import { useNavigate } from 'react-router-dom';
 
 import { 
-    FileSignature, Eye, Search, LayoutDashboard, Users,
-    Settings, BarChart3, X, ChevronRight, Activity, ArrowRight, Building2, Briefcase,
-    MessageSquare, Key, Layers, Archive, LogOut, Home, UserPlus, MoreVertical,
-    LayoutGrid, List, Plus, Trash2, Calendar, FileText, Menu, MonitorPlay,
-    CheckCircle, XCircle, ChevronDown, HelpCircle, Info
+    FileSignature, Eye, Search, LayoutDashboard,
+    BarChart3, X, ChevronRight, Activity, ArrowRight, Building2, Briefcase,
+    Layers, Archive, LogOut, MoreVertical,
+    LayoutGrid, List, Plus, Trash2, ChevronDown, HelpCircle
 } from 'lucide-react';
 
 const cleanStr = (str) => str ? str.toString().trim().toLowerCase() : '';
@@ -47,6 +46,14 @@ const CircleProgress = ({ percentage, color, title, value, subtitle }) => {
 export default function DashboardSupervisor() {
     const navigate = useNavigate();
 
+    // -- STATE UNTUK PROFIL PENGGUNA --
+    const [userProfile, setUserProfile] = useState({
+        inisial: 'U',
+        nama: 'Memuat...',
+        email: 'memuat...',
+        role: 'Memuat...' 
+    });
+
     const [activeMenu, setActiveMenu] = useState('DASHBOARD');
     const [openSubMenu, setOpenSubMenu] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -73,6 +80,47 @@ export default function DashboardSupervisor() {
     });
 
     const stagesOrder = ['Pemberkasan', 'Keuangan', 'Pelatihan', 'Penempatan', 'Selesai'];
+
+    // -- FETCH PROFIL USER SAAT COMPONENT MOUNT --
+    useEffect(() => {
+        const fetchUserProfile = async () => {
+            try {
+                // 1. Dapatkan user dari sesi Auth saat ini
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (user) {
+                    // 2. Ambil data profil DAN rolenya dari tabel employees
+                    const { data: employee } = await supabase
+                        .from('employees')
+                        .select('nama_lengkap, email_pribadi, master_role(nama_role)')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (employee) {
+                        setUserProfile({
+                            inisial: employee.nama_lengkap ? employee.nama_lengkap.charAt(0).toUpperCase() : 'A',
+                            nama: employee.nama_lengkap || 'User Tanpa Nama',
+                            email: employee.email_pribadi || user.email,
+                            role: employee.master_role?.nama_role || 'TIDAK ADA ROLE' 
+                        });
+                    } else {
+                        // Fallback jika login pakai akun auth murni (tanpa relasi ke employees)
+                        setUserProfile({
+                            inisial: user.email ? user.email.charAt(0).toUpperCase() : 'U',
+                            nama: 'Admin Utama',
+                            email: user.email,
+                            role: 'SUPER ADMIN'
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching user profile:', error.message);
+                setUserProfile({ inisial: 'A', nama: 'Administrator', email: 'admin@ujc.co.id', role: 'ADMIN' });
+            }
+        };
+
+        fetchUserProfile();
+    }, []);
 
     useEffect(() => {
         function handleClickOutside(event) { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setActiveDropdown(null); }
@@ -221,6 +269,21 @@ export default function DashboardSupervisor() {
     const filteredJO = jobOrders.filter(jo => safeString(jo.perusahaan).includes(searchTerm.toLowerCase()) || safeString(jo.bidang).includes(searchTerm.toLowerCase()));
     const maxChartCount = chartData.length > 0 ? Math.max(...chartData.map(d => d.value), 1) : 1;
 
+    // Handle Logout
+    const handleLogout = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                await supabase.from('employees').update({ is_online: false }).eq('id', user.id);
+            }
+            await supabase.auth.signOut();
+            navigate('/login');
+        } catch (error) {
+            console.error('Error logout:', error);
+            navigate('/login');
+        }
+    };
+
     if (activeJobOrder) return <JobOrderDetail jobOrder={activeJobOrder} onBack={() => { setActiveJobOrder(null); fetchJobOrders(); }} />;
 
     return (
@@ -234,12 +297,24 @@ export default function DashboardSupervisor() {
             {/* ── SIDEBAR UJC BRANDED ── */}
             <aside style={{ width: '280px', background: brandNavy, color: 'white', padding: '25px 15px', display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh', overflowY: 'auto', zIndex: 100, boxShadow: '4px 0 10px rgba(0,0,0,0.1)' }}>
                 
-                {/* Header Profil */}
+                {/* Header Profil (UPDATED) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px', padding: '10px' }}>
-                    <div style={{ width: '45px', height: '45px', borderRadius: '50%', background: brandYellow, color: brandNavy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 900 }}>A</div>
-                    <div>
-                        <div style={{ fontSize: '1rem', fontWeight: 800 }}>Administrator</div>
-                        <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div> admin@ujc.co.id</div>
+                    <div style={{ width: '45px', height: '45px', borderRadius: '50%', background: brandYellow, color: brandNavy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 900, flexShrink: 0 }}>
+                        {userProfile.inisial}
+                    </div>
+                    <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontSize: '1rem', fontWeight: 800, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                            {userProfile.nama}
+                        </div>
+                        {/* Menampilkan Role */}
+                        <div style={{ fontSize: '0.7rem', color: brandYellow, fontWeight: 800, marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {userProfile.role}
+                        </div>
+                        {/* Menampilkan Email & Status Online */}
+                        <div style={{ fontSize: '0.7rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', flexShrink: 0 }}></div> 
+                            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>{userProfile.email}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -290,20 +365,7 @@ export default function DashboardSupervisor() {
 
                             <button onClick={() => { setActiveMenu('MASTER_CV'); setActiveTab('Pemberkasan'); }} style={subMenuS(activeMenu === 'MASTER_CV')}><div style={subDot(activeMenu === 'MASTER_CV')}></div> Siswa (Manajemen LPK)</button>
                             
-                            {/* TOMBOL MASTER PENGGUNA */}
                             <button onClick={() => setActiveMenu('MASTER_PENGGUNA')} style={subMenuS(activeMenu === 'MASTER_PENGGUNA')}><div style={subDot(activeMenu === 'MASTER_PENGGUNA')}></div> Pengguna</button>
-                        </div>
-                    </div>
-
-                    {/* PENGATURAN */}
-                    <div>
-                        <button onClick={() => toggleSubMenu('PENGATURAN')} style={menuDropdownBtn(openSubMenu === 'PENGATURAN')}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><Settings size={18} /> Pengaturan <small style={smallKanjiList}>設定</small></div>
-                            <ChevronDown size={16} style={{ transform: openSubMenu === 'PENGATURAN' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
-                        </button>
-                        <div style={subMenuContainer(openSubMenu === 'PENGATURAN')}>
-                            <button style={subMenuS(false)}><div style={subDot(false)}></div> Role Akses</button>
-                            <button style={subMenuS(false)}><div style={subDot(false)}></div> Sistem</button>
                         </div>
                     </div>
 
@@ -321,7 +383,7 @@ export default function DashboardSupervisor() {
                 </div>
 
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', marginTop: '20px' }}>
-                    <button onClick={() => navigate('/login')} style={{...menuS(false), color: '#ef4444'}}><LogOut size={18} /> Keluar <small style={{...smallKanjiList, color:'#ef4444'}}>外出</small></button>
+                    <button onClick={handleLogout} style={{...menuS(false), color: '#ef4444'}}><LogOut size={18} /> Keluar <small style={{...smallKanjiList, color:'#ef4444'}}>外出</small></button>
                 </div>
             </aside>
             
