@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase'; 
-import { UserPlus, Loader2, Users, Edit3, XCircle, Camera, X, Trash2 } from 'lucide-react';
+import { UserPlus, Loader2, Users, Edit3, Camera, X, Trash2 } from 'lucide-react';
 import RegistrationPhotoUpload from './RegistrationPhotoUpload'; 
 
 // BRAND COLORS
@@ -13,6 +13,9 @@ export default function DashboardPendaftaran() {
     const [editingId, setEditingId] = useState(null);
     const [uploadModalId, setUploadModalId] = useState(null); 
     
+    // Simpan informasi user yang sedang login
+    const [currentUser, setCurrentUser] = useState(null);
+
     const initialFormState = {
         nik: '', nama_lengkap: '', nama_jepang: '', tempat_lahir: '', tanggal_lahir: '', 
         jenis_kelamin: '', agama: '', golongan_darah: '', tinggi_badan: '', berat_badan: '', 
@@ -21,6 +24,16 @@ export default function DashboardPendaftaran() {
     };
     
     const [formData, setFormData] = useState(initialFormState);
+
+    // Ambil data user yang login saat komponen dimuat
+    useEffect(() => {
+        const getUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) setCurrentUser(user);
+        };
+        getUser();
+        fetchRecentStudents();
+    }, []);
 
     const fetchRecentStudents = async () => {
         const { data, error } = await supabase
@@ -31,7 +44,18 @@ export default function DashboardPendaftaran() {
         if (!error && data) setRecentStudents(data);
     };
 
-    useEffect(() => { fetchRecentStudents(); }, []);
+    // ── FUNGSI PENCATATAN AKTIVITAS ──
+    const logActivity = async (actionDesc) => {
+        if (!currentUser) return;
+        try {
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUser.id,
+                keterangan: actionDesc
+            }]);
+        } catch (err) {
+            console.error("Gagal mencatat log aktivitas:", err);
+        }
+    };
 
     // ── HANDLER INPUT ──
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -49,7 +73,6 @@ export default function DashboardPendaftaran() {
     const handleEditInit = (siswa) => {
         setEditingId(siswa.id);
         
-        // Pastikan format array/JSON aman
         const cleanArr = (arr) => {
             if (!arr) return [];
             if (Array.isArray(arr)) return arr;
@@ -81,21 +104,31 @@ export default function DashboardPendaftaran() {
             ...formData,
             tinggi_badan: formData.tinggi_badan ? parseInt(formData.tinggi_badan) : null,
             berat_badan: formData.berat_badan ? parseInt(formData.berat_badan) : null,
-            tahap_sekarang: editingId ? undefined : 'Pemberkasan', 
-            status_akhir: editingId ? undefined : 'Proses' 
         };
 
         try {
             if (editingId) {
+                // UPDATE
                 const { error } = await supabase.from('students').update(payload).eq('id', editingId);
                 if (error) throw error;
+                
+                await logActivity(`Mengoreksi data pendaftar: ${payload.nama_lengkap} (NIK: ${payload.nik})`);
                 alert("Data Siswa Berhasil Diperbarui!");
                 resetForm();
             } else {
+                // INSERT (Pendaftaran Baru)
+                // Pastikan menggunakan Huruf Kapital sesuai kesepakatan ENUM
+                payload.tahap_sekarang = 'PEMBERKASAN';
+                payload.status_akhir = 'Proses';
+                payload.created_by = currentUser ? currentUser.id : null; 
+
                 const { data, error } = await supabase.from('students').insert([payload]).select();
                 if (error) throw error;
+                
+                await logActivity(`Mendaftarkan siswa baru: ${payload.nama_lengkap} (NIK: ${payload.nik})`);
                 alert("Siswa Berhasil Didaftarkan! Silakan unggah foto.");
                 resetForm();
+                
                 if (data && data.length > 0) setUploadModalId(data[0].id);
             }
             fetchRecentStudents();
