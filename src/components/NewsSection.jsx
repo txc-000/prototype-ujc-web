@@ -79,9 +79,9 @@ export default function NewsSection({ lang, newsData }) {
                 <p style={{ fontSize: '0.95rem', color: '#666', lineHeight: 1.6, marginBottom: '20px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', flexGrow: 1 }}>
                   {activeContent.excerpt}
                 </p>
-                <button style={{ background: 'none', border: 'none', color: 'var(--red)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', padding: 0 }}>
+                <Link to={`/berita/${news.id}`} style={{ textDecoration: 'none', color: 'var(--red)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', padding: 0 }}>
                   {content.btn} →
-                </button>
+                </Link>
               </div>
             </div>
           );
@@ -98,9 +98,10 @@ export default function NewsSection({ lang, newsData }) {
             {olderNews.map((news) => {
               const activeContent = news.content[lang] || news.content['ID'];
               return (
-                <div key={news.id} style={{ 
+                <Link to={`/berita/${news.id}`} key={news.id} style={{ 
                   display: 'flex', gap: '20px', background: 'var(--white)', padding: '15px', 
-                  borderRadius: '10px', border: '1px solid #eee', alignItems: 'center', transition: 'all 0.2s' 
+                  borderRadius: '10px', border: '1px solid #eee', alignItems: 'center', transition: 'all 0.2s',
+                  textDecoration: 'none', color: 'inherit' 
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#ccc'; e.currentTarget.style.background = '#fafafa'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#eee'; e.currentTarget.style.background = 'var(--white)'; }}>
@@ -135,7 +136,7 @@ export default function NewsSection({ lang, newsData }) {
                     <span style={{ color: 'var(--red)', fontSize: '1.2rem' }}>→</span>
                   </div>
 
-                </div>
+                </Link>
               );
             })}
           </div>

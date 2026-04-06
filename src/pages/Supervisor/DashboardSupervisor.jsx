@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 import EditProfileModal from './EditProfileModal'; 
 import JobOrderDetail from './JobOrderDetail'; 
 import MasterMitra from './MasterMitra'; 
+import MasterKaisha from './MasterKaisha'; 
+import MasterKumiai from './MasterKumiai'; 
 import MasterPengguna from './MasterPengguna';
 import { useNavigate } from 'react-router-dom';
 
@@ -297,7 +299,7 @@ export default function DashboardSupervisor() {
             {/* ── SIDEBAR UJC BRANDED ── */}
             <aside style={{ width: '280px', background: brandNavy, color: 'white', padding: '25px 15px', display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh', overflowY: 'auto', zIndex: 100, boxShadow: '4px 0 10px rgba(0,0,0,0.1)' }}>
                 
-                {/* Header Profil (UPDATED) */}
+                {/* Header Profil */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px', padding: '10px' }}>
                     <div style={{ width: '45px', height: '45px', borderRadius: '50%', background: brandYellow, color: brandNavy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 900, flexShrink: 0 }}>
                         {userProfile.inisial}
@@ -331,7 +333,7 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'TRANSAKSI' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'TRANSAKSI')}>
-                            <button onClick={() => setActiveMenu('JOB_ORDER')} style={subMenuS(activeMenu === 'JOB_ORDER')}><div style={subDot(activeMenu === 'JOB_ORDER')}></div> Job Order</button>
+                            <button onClick={() => setActiveMenu('JOB_ORDER')} style={subMenuS(activeMenu === 'JOB_ORDER')}><div style={subDot(activeMenu === 'JOB_ORDER')}></div> Job Order Kaisha</button>
                             <button onClick={() => navigate('/pendaftaran/dashboard')} style={subMenuS(false)}><div style={subDot(false)}></div> Pendaftaran Baru</button>
                         </div>
                     </div>
@@ -356,16 +358,11 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'MASTER' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'MASTER')}>
-                            <button onClick={() => { setActiveMenu('MASTER_MITRA'); setActiveTab('MITRA'); }} style={subMenuS(activeMenu === 'MASTER_MITRA' && activeTab === 'MITRA')}>
-                                <div style={subDot(activeMenu === 'MASTER_MITRA' && activeTab === 'MITRA')}></div> Mitra Kaisha
-                            </button>
-                            <button onClick={() => { setActiveMenu('MASTER_MITRA'); setActiveTab('KUMIAI'); }} style={subMenuS(activeMenu === 'MASTER_MITRA' && activeTab === 'KUMIAI')}>
-                                <div style={subDot(activeMenu === 'MASTER_MITRA' && activeTab === 'KUMIAI')}></div> Kumiai
-                            </button>
-
-                            <button onClick={() => { setActiveMenu('MASTER_CV'); setActiveTab('Pemberkasan'); }} style={subMenuS(activeMenu === 'MASTER_CV')}><div style={subDot(activeMenu === 'MASTER_CV')}></div> Siswa (Manajemen LPK)</button>
-                            
-                            <button onClick={() => setActiveMenu('MASTER_PENGGUNA')} style={subMenuS(activeMenu === 'MASTER_PENGGUNA')}><div style={subDot(activeMenu === 'MASTER_PENGGUNA')}></div> Pengguna</button>
+                            <button onClick={() => setActiveMenu('MASTER_MITRA')} style={subMenuS(activeMenu === 'MASTER_MITRA')}><div style={subDot(activeMenu === 'MASTER_MITRA')}></div> Mitra Lokal</button>
+                            <button onClick={() => setActiveMenu('MASTER_KAISHA')} style={subMenuS(activeMenu === 'MASTER_KAISHA')}><div style={subDot(activeMenu === 'MASTER_KAISHA')}></div> Perusahaan (Kaisha)</button>
+                            <button onClick={() => setActiveMenu('MASTER_KUMIAI')} style={subMenuS(activeMenu === 'MASTER_KUMIAI')}><div style={subDot(activeMenu === 'MASTER_KUMIAI')}></div> Asosiasi (Kumiai)</button>
+                            <button onClick={() => { setActiveMenu('MASTER_CV'); setActiveTab('Pemberkasan'); }} style={subMenuS(activeMenu === 'MASTER_CV')}><div style={subDot(activeMenu === 'MASTER_CV')}></div> Siswa LPK</button>
+                            <button onClick={() => setActiveMenu('MASTER_PENGGUNA')} style={subMenuS(activeMenu === 'MASTER_PENGGUNA')}><div style={subDot(activeMenu === 'MASTER_PENGGUNA')}></div> Pengguna Internal</button>
                         </div>
                     </div>
 
@@ -446,10 +443,10 @@ export default function DashboardSupervisor() {
                     </div>
                 )}
 
-                {/* ── MASTER MITRA / KUMIAI ── */}
-                {activeMenu === 'MASTER_MITRA' && (
-                    <MasterMitra initialFilter={activeTab} />
-                )}
+                {/* ── MASTER MITRA, KAISHA, KUMIAI ── */}
+                {activeMenu === 'MASTER_MITRA' && <MasterMitra />}
+                {activeMenu === 'MASTER_KAISHA' && <MasterKaisha />}
+                {activeMenu === 'MASTER_KUMIAI' && <MasterKumiai />}
 
                 {/* ── MASTER PENGGUNA ── */}
                 {activeMenu === 'MASTER_PENGGUNA' && (

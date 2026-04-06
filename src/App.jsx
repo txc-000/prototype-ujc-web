@@ -8,9 +8,12 @@ import LatarBelakang from './pages/About/LatarBelakang';
 import Legalitas from './pages/About/Legalitas';
 import AdminGate from './pages/AdminGate';
 
+// ── IMPORT KOMPONEN BERITA (BARU) ──
+import NewsDetail from './pages/News/NewsDetail';
+
 // ── IMPORT KOMPONEN AUTH ──
 import LoginPage from './pages/Auth/LoginPage';
-import UbahPassword from './pages/Auth/UbahPassword'; // <-- IMPORT BARU
+import UbahPassword from './pages/Auth/UbahPassword'; 
 
 // ── IMPORT KOMPONEN PIPELINE (SISTEM PEGAWAI) ──
 import DashboardPendaftaran from './pages/Pendaftaran/DashboardPendaftaran';
@@ -109,10 +112,11 @@ function AppContent() {
           <Route path="/latar-belakang" element={<LatarBelakang lang={lang} />} />
           <Route path="/legalitas" element={<Legalitas lang={lang} />} />
           <Route path="/ujc-admin-gate-2026" element={<AdminGate newsData={newsData} setNewsData={setNewsData} lang={lang} />} />
+          <Route path="/berita/:id" element={<NewsDetail lang={lang} />} /> {/* <-- RUTE BERITA BARU */}
 
           {/* ── RUTE AUTHENTICATION ── */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/ubah-password" element={<UbahPassword />} /> {/* <-- RUTE BARU */}
+          <Route path="/ubah-password" element={<UbahPassword />} /> 
 
           {/* ── RUTE CONVEYOR ── */}
           <Route path="/pendaftaran/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDAFTARAN', 'DIREKTUR', 'SUPERVISOR']}><DashboardPendaftaran /></ProtectedRoute>} />
