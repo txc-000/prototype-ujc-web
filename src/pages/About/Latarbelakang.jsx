@@ -19,7 +19,6 @@ export default function LatarBelakang({ lang }) {
   };
 
   const content = text[lang];
-
   return (
     <div style={{ background: 'var(--paper)', minHeight: '100vh', padding: '80px 5%' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
