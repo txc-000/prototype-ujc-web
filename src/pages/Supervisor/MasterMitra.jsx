@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Plus, MoreVertical, Edit, Trash2, X, GraduationCap, MapPin, Phone, Mail } from 'lucide-react';
+import { Search, Plus, MoreVertical, Edit, Trash2, X, GraduationCap, MapPin, Phone, Mail, Key } from 'lucide-react';
 
 const brandNavy = '#101869';
 
@@ -17,7 +17,9 @@ export default function MasterMitra() {
 
     const initialForm = {
         nama_institusi: '', jenis_institusi: 'SMK', 
-        penanggung_jawab: '', no_telepon: '', email: '', alamat: '', status: 'Aktif'
+        penanggung_jawab: '', no_telepon: '', email: '', 
+        password: '', 
+        alamat: '', status: 'Aktif'
     };
     const [formData, setFormData] = useState(initialForm);
 
@@ -46,7 +48,7 @@ export default function MasterMitra() {
     const openModal = (mitra = null) => {
         if (mitra) {
             setEditingId(mitra.id);
-            setFormData({ ...mitra });
+            setFormData({ ...mitra, password: '' }); 
         } else {
             setEditingId(null);
             setFormData(initialForm);
@@ -59,22 +61,68 @@ export default function MasterMitra() {
         e.preventDefault();
         setIsLoading(true);
         try {
+            let targetId = editingId;
+
+            // FUNGSI TRIM UNTUK MEMBERSIHKAN SPASI TERSEMBUNYI
+            const cleanEmail = formData.email ? formData.email.trim() : '';
+
+            // 1. JIKA DATA BARU: Buat Akun Auth Terlebih Dahulu
+            if (!editingId) {
+                if (!formData.password || formData.password.length < 6) {
+                    throw new Error("Password minimal 6 karakter untuk akun Mitra.");
+                }
+
+                // Daftarkan ke Supabase Auth
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                    email: cleanEmail,
+                    password: formData.password,
+                    // Opsional: Tambahkan meta data agar email langsung terverifikasi jika setting confirm email dimatikan
+                });
+
+                if (authError) throw authError;
+                if (!authData.user) throw new Error("Gagal membuat kredensial akses. Mungkin email sudah terdaftar.");
+                
+                targetId = authData.user.id; // Gunakan UUID dari Auth untuk ID tabel profil
+
+                // PENTING: Jika Tuan memiliki tabel 'employees' untuk mengecek role saat login,
+                // Pastikan role untuk Mitra juga dimasukkan ke sana. 
+                // Asumsi: 'MITRA' adalah id_role yang valid. Tuan bisa menyesuaikan kode ini.
+                // await supabase.from('employees').insert([{ id: targetId, email_pribadi: cleanEmail, role_id: 'ID_UNTUK_MITRA', is_active: true }]);
+            }
+
+            // 2. Simpan Profil ke master_mitra_lokal
+            const profileData = {
+                id: targetId, // UUID dari Auth
+                nama_institusi: formData.nama_institusi,
+                jenis_institusi: formData.jenis_institusi,
+                penanggung_jawab: formData.penanggung_jawab,
+                no_telepon: formData.no_telepon,
+                email: cleanEmail, // Gunakan email bersih
+                alamat: formData.alamat,
+                status: formData.status
+            };
+
             if (editingId) {
-                const { error } = await supabase.from('master_mitra_lokal').update(formData).eq('id', editingId);
+                const { error } = await supabase.from('master_mitra_lokal').update(profileData).eq('id', editingId);
                 if (error) throw error;
                 alert('Data Mitra berhasil diperbarui!');
             } else {
-                const { error } = await supabase.from('master_mitra_lokal').insert([formData]);
+                const { error } = await supabase.from('master_mitra_lokal').insert([profileData]);
                 if (error) throw error;
-                alert('Data Mitra baru berhasil ditambahkan!');
+                alert('Mitra & Akun Login berhasil dibuat!');
             }
+            
             setIsModalOpen(false);
             fetchData();
-        } catch (error) { alert('Error: ' + error.message); } finally { setIsLoading(false); }
+        } catch (error) { 
+            alert('Proses Gagal: ' + error.message); 
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
     const handleDelete = async (id, nama) => {
-        if (!window.confirm(`Yakin ingin menghapus Mitra ${nama}?`)) return;
+        if (!window.confirm(`Yakin ingin menghapus Mitra ${nama}? Akses login juga mungkin perlu dihapus manual dari Supabase Auth.`)) return;
         try {
             const { error } = await supabase.from('master_mitra_lokal').delete().eq('id', id);
             if (error) throw error;
@@ -93,8 +141,8 @@ export default function MasterMitra() {
         <div className="fade-in">
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
                 <div>
-                    <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 5px 0' }}>Master Mitra Bisnis LPK</h1>
-                    <p style={{ color: '#64748b', margin: 0 }}>Kelola sekolah SMK, sponsor, dan agensi lokal penyalur siswa.</p>
+                    <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 5px 0' }}>Master Mitra & Akses</h1>
+                    <p style={{ color: '#64748b', margin: 0 }}>Kelola profil sekolah dan otomatis buatkan akun login portal mereka.</p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
@@ -159,14 +207,32 @@ export default function MasterMitra() {
 
             {isModalOpen && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-                    <form onSubmit={handleSubmit} style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '500px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+                    <form onSubmit={handleSubmit} style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '550px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#1e293b' }}>{editingId ? 'Edit Mitra LPK' : 'Tambah Mitra Lokal Baru'}</h2>
+                            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#1e293b' }}>{editingId ? 'Edit Mitra' : 'Tambah Mitra & Buat Akun'}</h2>
                             <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={20} /></button>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px', maxHeight: '60vh', overflowY: 'auto', paddingRight: '10px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px', maxHeight: '65vh', overflowY: 'auto', paddingRight: '10px' }}>
                             
+                            {/* BAGIAN 1: KREDENSIAL LOGIN (HANYA MUNCUL SAAT TAMBAH BARU) */}
+                            {!editingId && (
+                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px dashed #cbd5e1', marginBottom: '10px' }}>
+                                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: brandNavy, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Key size={16}/> KREDENSIAL LOGIN PORTAL</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                        <div><label style={labelForm}>Email Login *</label><input type="email" name="email" value={formData.email} onChange={handleInputChange} required style={inputForm} placeholder="email@sekolah.com" /></div>
+                                        <div><label style={labelForm}>Password Sementara *</label><input type="text" name="password" value={formData.password} onChange={handleInputChange} required style={inputForm} placeholder="Min. 6 Karakter" /></div>
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '8px' }}>* Email ini akan digunakan Mitra untuk login. Pastikan tidak ada spasi ekstra.</div>
+                                </div>
+                            )}
+
+                            {/* JIKA EDIT, TAMPILKAN EMAIL SAJA TANPA PASSWORD */}
+                            {editingId && (
+                                <div><label style={labelForm}>Email Kontak / Login</label><input type="email" name="email" value={formData.email} onChange={handleInputChange} required style={{...inputForm, background: '#f1f5f9'}} readOnly title="Email login tidak bisa diubah dari sini." /></div>
+                            )}
+
+                            {/* BAGIAN 2: DATA PROFIL */}
                             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
                                 <div><label style={labelForm}>Nama Institusi / Sekolah *</label><input type="text" name="nama_institusi" value={formData.nama_institusi} onChange={handleInputChange} required style={inputForm} placeholder="Contoh: SMKN 1 Jepara" /></div>
                                 <div><label style={labelForm}>Jenis</label>
@@ -181,17 +247,14 @@ export default function MasterMitra() {
                             
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                                 <div><label style={labelForm}>Penanggung Jawab (PIC)</label><input type="text" name="penanggung_jawab" value={formData.penanggung_jawab} onChange={handleInputChange} style={inputForm} placeholder="Nama Guru / PIC" /></div>
-                                <div><label style={labelForm}>No. Telepon</label><input type="text" name="no_telepon" value={formData.no_telepon} onChange={handleInputChange} style={inputForm} /></div>
+                                <div><label style={labelForm}>No. Telepon / WA</label><input type="text" name="no_telepon" value={formData.no_telepon} onChange={handleInputChange} style={inputForm} /></div>
                             </div>
-                            
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
-                                <div><label style={labelForm}>Email Kontak</label><input type="email" name="email" value={formData.email} onChange={handleInputChange} style={inputForm} /></div>
-                                <div><label style={labelForm}>Status</label>
-                                    <select name="status" value={formData.status} onChange={handleInputChange} style={inputForm}>
-                                        <option value="Aktif">Aktif</option>
-                                        <option value="Non-Aktif">Non-Aktif</option>
-                                    </select>
-                                </div>
+
+                            <div><label style={labelForm}>Status Kemitraan</label>
+                                <select name="status" value={formData.status} onChange={handleInputChange} style={inputForm}>
+                                    <option value="Aktif">Aktif</option>
+                                    <option value="Non-Aktif">Non-Aktif</option>
+                                </select>
                             </div>
 
                             <div><label style={labelForm}>Alamat Lengkap</label><textarea name="alamat" value={formData.alamat} onChange={handleInputChange} rows="3" style={{ ...inputForm, resize: 'vertical' }}></textarea></div>
@@ -199,7 +262,9 @@ export default function MasterMitra() {
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                             <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '10px 20px', background: '#f8fafc', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Batal</button>
-                            <button type="submit" disabled={isLoading} style={{ padding: '10px 20px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>{isLoading ? 'Menyimpan...' : 'Simpan Mitra'}</button>
+                            <button type="submit" disabled={isLoading} style={{ padding: '10px 20px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                                {isLoading ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Buat Akun & Simpan')}
+                            </button>
                         </div>
                     </form>
                 </div>

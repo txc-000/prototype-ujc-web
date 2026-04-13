@@ -75,7 +75,6 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                     <div style={col}><label style={lb}>Nama Lengkap</label><input style={inp} value={selectedCV.nama_lengkap || ''} onChange={e => setSelectedCV({...selectedCV, nama_lengkap: e.target.value})} /></div>
                     <div style={col}><label style={lb}>氏名 (Nama Jepang)</label><input style={inp} value={selectedCV.nama_jepang || ''} onChange={e => setSelectedCV({...selectedCV, nama_jepang: e.target.value})} /></div>
                     
-                    {/* INPUT BARU: JENIS KELAMIN & STATUS PERNIKAHAN */}
                     <div style={col}>
                         <label style={lb}>Jenis Kelamin</label>
                         <select style={inp} value={selectedCV.jenis_kelamin || ''} onChange={e => setSelectedCV({...selectedCV, jenis_kelamin: e.target.value})}>
@@ -248,7 +247,8 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
                                 <div style={col}><label style={lb}>Alamat Lengkap (Kosongkan jika sama)</label><input style={inpSm} value={item.alamat} onChange={e => updateKeluarga(index, 'alamat', e.target.value)} /></div>
-                                <div style={col}><label style={lb}>Umur / Penghasilan (Rp)</label><input style={inpSm} type="text" placeholder="Contoh: 45 Thn / 2500000" value={item.pendapatan} onChange={e => updateKeluarga(index, 'pendapatan', e.target.value)} /></div>
+                                {/* PERUBAHAN LABEL DAN PLACEHOLDER DI SINI */}
+                                <div style={col}><label style={lb}>Pekerjaan / Penghasilan (Rp)</label><input style={inpSm} type="text" placeholder="Contoh: Petani / 2500000" value={item.pendapatan} onChange={e => updateKeluarga(index, 'pendapatan', e.target.value)} /></div>
                             </div>
                         </div>
                     ))}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase'; // Sesuaikan path jika berbeda
+import { supabase } from '../../lib/supabase'; 
 import { Key, User, ArrowRight, AlertCircle } from 'lucide-react';
 
 const brandNavy = '#101869';
@@ -8,7 +8,7 @@ const brandYellow = '#fdfb06';
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const [idKaryawan, setIdKaryawan] = useState('');
+    const [identifier, setIdentifier] = useState(''); 
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -18,61 +18,70 @@ export default function LoginPage() {
         setLoading(true);
         setErrorMsg('');
 
-        // 1. Ubah ID Karyawan menjadi format email
-        const shadowEmail = `${idKaryawan.trim().toUpperCase()}@internal.ujc.com`;
+        const inputVal = identifier.trim();
+
+        // 1. SMART LOGIN LOGIC (Proses di Belakang Layar)
+        // Jika teks mengandung '@', proses sebagai huruf kecil semua (Email)
+        // Jika tidak ada '@', proses sebagai huruf BESAR semua lalu tambah domain (ID Karyawan)
+        const loginEmail = inputVal.includes('@') 
+            ? inputVal.toLowerCase() 
+            : `${inputVal.toUpperCase()}@internal.ujc.com`;
 
         try {
             // 2. Eksekusi Login ke Supabase
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: shadowEmail,
+                email: loginEmail,
                 password: password,
             });
 
-            if (authError) throw new Error('ID Karyawan atau Password salah.');
+            if (authError) throw new Error('Kredensial tidak valid. Periksa kembali ID/Email dan Password Anda.');
 
-            // 3. Ambil profil karyawan beserta nama role-nya
-            const { data: employee, error: empError } = await supabase
+            // 3. CEK PEGAWAI INTERNAL
+            const { data: employee } = await supabase
                 .from('employees')
-                .select(`
-          is_first_login, 
-          role_id, 
-          master_role (nama_role)
-        `)
+                .select('is_first_login, role_id, master_role(nama_role)')
                 .eq('id', authData.user.id)
-                .single();
+                .maybeSingle(); 
 
-            if (empError || !employee) throw new Error('Data profil karyawan tidak ditemukan di sistem.');
+            if (employee) {
+                // ALUR PEGAWAI INTERNAL
+                await supabase.from('employees').update({ is_online: true }).eq('id', authData.user.id);
 
-            // 4. Update status is_online menjadi true
-            await supabase.from('employees').update({ is_online: true }).eq('id', authData.user.id);
+                const roleName = employee.master_role?.nama_role?.toUpperCase();
 
-            // 5. Logika Routing Sebenarnya (Real Routing)
-            const roleName = employee.master_role?.nama_role?.toUpperCase();
+                if (employee.is_first_login) {
+                    alert("Info: Ini adalah login pertama. Anda akan langsung diarahkan ke Dashboard sementara halaman Ubah Password sedang disiapkan.");
+                }
 
-            // Jika ini login pertama dan Anda belum membuat halaman ubah password, 
-            // kita berikan alert sementara tapi tetap izinkan masuk.
-            if (employee.is_first_login) {
-                alert("Info: Ini adalah login pertama. Karena halaman ubah password belum siap, Anda akan langsung diarahkan ke Dashboard.");
-                // Idealnya nanti: navigate('/ubah-password'); return;
-            }
-
-            // 6. Arahkan berdasarkan Role Name asli dari Database
-            // 6. Arahkan berdasarkan Role Name asli dari Database
-            if (roleName === 'SUPERVISOR' || roleName === 'SUPER ADMIN') {
-                // Super Admin diarahkan ke halaman Supervisor (atau ganti ke /direktur/dashboard jika Tuan mau)
-                navigate('/supervisor/dashboard');
-            } else if (roleName === 'DIREKTUR') {
-                navigate('/direktur/dashboard');
-            } else if (roleName === 'PENDAFTARAN') {
-                navigate('/pendaftaran/dashboard');
-            } else if (roleName === 'KEUANGAN') {
-                navigate('/keuangan/dashboard');
-            } else if (roleName === 'DOKUMEN') {
-                navigate('/dokumen/dashboard');
-            } else if (roleName === 'PELATIHAN') {
-                navigate('/pelatihan/dashboard');
+                if (roleName === 'SUPERVISOR' || roleName === 'SUPER ADMIN') {
+                    navigate('/supervisor/dashboard');
+                } else if (roleName === 'DIREKTUR') {
+                    navigate('/direktur/dashboard');
+                } else if (roleName === 'PENDAFTARAN') {
+                    navigate('/pendaftaran/dashboard');
+                } else if (roleName === 'KEUANGAN') {
+                    navigate('/keuangan/dashboard');
+                } else if (roleName === 'DOKUMEN') {
+                    navigate('/dokumen/dashboard');
+                } else if (roleName === 'PELATIHAN') {
+                    navigate('/pelatihan/dashboard');
+                } else {
+                    throw new Error(`Role internal tidak dikenali: ${roleName || 'Kosong'}`);
+                }
             } else {
-                throw new Error(`Role tidak valid atau tidak dikenali: ${roleName || 'Kosong'}`);
+                // 4. CEK MITRA
+                const { data: mitra } = await supabase
+                    .from('master_mitra_lokal')
+                    .select('id')
+                    .eq('id', authData.user.id)
+                    .maybeSingle();
+
+                if (mitra) {
+                    // ALUR MITRA
+                    navigate('/mitra/dashboard');
+                } else {
+                    throw new Error('Data profil Anda tidak ditemukan di sistem LPK maupun kemitraan.');
+                }
             }
 
         } catch (error) {
@@ -91,7 +100,7 @@ export default function LoginPage() {
                         UJC
                     </div>
                     <h2 style={{ margin: 0, color: '#1e293b', fontWeight: 800 }}>Sistem Terpadu LPK</h2>
-                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '5px' }}>Masuk menggunakan ID Karyawan Anda</p>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '5px' }}>Portal Pegawai & Mitra Bisnis</p>
                 </div>
 
                 {errorMsg && (
@@ -102,16 +111,16 @@ export default function LoginPage() {
 
                 <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>ID KARYAWAN</label>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>ID KARYAWAN / EMAIL MITRA</label>
                         <div style={{ position: 'relative' }}>
                             <User size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
                             <input
                                 type="text"
                                 required
-                                placeholder="Contoh: UJC-001"
-                                value={idKaryawan}
-                                onChange={(e) => setIdKaryawan(e.target.value)}
-                                style={{ width: '100%', padding: '12px 15px 12px 45px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc', fontSize: '0.95rem', color: '#1e293b', textTransform: 'uppercase' }}
+                                placeholder="UJC-001 atau mitra@email.com"
+                                value={identifier}
+                                onChange={(e) => setIdentifier(e.target.value)} // <-- Kembali ke fungsi onChange standar
+                                style={{ width: '100%', padding: '12px 15px 12px 45px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc', fontSize: '0.95rem', color: '#1e293b' }}
                             />
                         </div>
                     </div>

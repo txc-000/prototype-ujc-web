@@ -8,7 +8,7 @@ import LatarBelakang from './pages/About/LatarBelakang';
 import Legalitas from './pages/About/Legalitas';
 import AdminGate from './pages/AdminGate';
 
-// ── IMPORT KOMPONEN BERITA (BARU) ──
+// ── IMPORT KOMPONEN BERITA ──
 import NewsDetail from './pages/News/NewsDetail';
 
 // ── IMPORT KOMPONEN AUTH ──
@@ -25,6 +25,9 @@ import DashboardPelatihan from './pages/Pelatihan/DashboardPelatihan';
 import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
 import ManajemenRole from './pages/Supervisor/ManajemenRole';
 import DashboardDirektur from './pages/Direktur/DashboardDirektur';
+
+// ── IMPORT KOMPONEN MITRA (BARU) ──
+import DashboardMitra from './pages/Mitra/DashboardMitra';
 
 // ── IMPORT KOMPONEN CETAK CV ──
 import PrintRirekisho from './components/PrintRirekisho'; 
@@ -48,14 +51,28 @@ function AppContent() {
   useEffect(() => {
     const fetchSessionRole = async (session) => {
       if (session) {
-        const { data: emp } = await supabase
+        // 1. Cek apakah user adalah Pegawai Internal
+        const { data: emp, error: empError } = await supabase
           .from('employees')
           .select('master_role(nama_role)')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle(); 
         
         if (emp && emp.master_role) {
           setUserRole(emp.master_role.nama_role.toUpperCase());
+          setIsAuthLoading(false);
+          return;
+        }
+
+        // 2. Jika bukan pegawai, cek apakah user adalah Mitra
+        const { data: mitra, error: mitraError } = await supabase
+          .from('master_mitra_lokal')
+          .select('id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (mitra) {
+          setUserRole('MITRA');
         } else {
           setUserRole(null);
         }
@@ -93,8 +110,8 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Tambahkan /ubah-password agar dianggap sebagai rute sistem (tidak menampilkan navbar/footer publik)
-  const isSystemRoute = ['/pendaftaran', '/keuangan', '/dokumen', '/pelatihan', '/supervisor', '/direktur', '/print-cv', '/login', '/ubah-password'].some(route => location.pathname.startsWith(route));
+  // Tambahkan /ubah-password dan /mitra agar dianggap sebagai rute sistem (tidak menampilkan navbar/footer publik)
+  const isSystemRoute = ['/pendaftaran', '/keuangan', '/dokumen', '/pelatihan', '/supervisor', '/direktur', '/print-cv', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
 
   // Pengecualian tambahan: Jangan tampilkan loading screen saat di halaman login atau ubah password
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
@@ -112,7 +129,7 @@ function AppContent() {
           <Route path="/latar-belakang" element={<LatarBelakang lang={lang} />} />
           <Route path="/legalitas" element={<Legalitas lang={lang} />} />
           <Route path="/ujc-admin-gate-2026" element={<AdminGate newsData={newsData} setNewsData={setNewsData} lang={lang} />} />
-          <Route path="/berita/:id" element={<NewsDetail lang={lang} />} /> {/* <-- RUTE BERITA BARU */}
+          <Route path="/berita/:id" element={<NewsDetail lang={lang} />} /> 
 
           {/* ── RUTE AUTHENTICATION ── */}
           <Route path="/login" element={<LoginPage />} />
@@ -130,6 +147,9 @@ function AppContent() {
 
           {/* ── RUTE DIREKTUR ── */}
           <Route path="/direktur/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DIREKTUR', 'SUPERVISOR']}><DashboardDirektur /></ProtectedRoute>} />
+
+          {/* ── RUTE MITRA (AGENSI/SEKOLAH LOKAL) ── */}
+          <Route path="/mitra/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['MITRA']}><DashboardMitra /></ProtectedRoute>} />
 
           {/* ── RUTE CETAK CV ── */}
           <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN']}><PrintRirekisho /></ProtectedRoute>} />
