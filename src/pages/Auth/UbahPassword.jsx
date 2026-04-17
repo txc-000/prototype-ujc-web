@@ -1,51 +1,91 @@
-import React, { useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Lock, CheckCircle } from 'lucide-react';
+import { supabase } from '../../lib/supabase'; 
+import { Key, ArrowRight, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
 
 const brandNavy = '#101869';
+const brandYellow = '#fdfb06';
 
 export default function UbahPassword() {
-    const [password, setPassword] = useState('');
+    const navigate = useNavigate();
+    const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const navigate = useNavigate();
+    const [successMsg, setSuccessMsg] = useState('');
+    const [userRole, setUserRole] = useState(null);
+
+    // Cek Sesi dan Ambil Role agar tahu harus kembali ke Dashboard mana
+    useEffect(() => {
+        const checkSession = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                navigate('/login');
+                return;
+            }
+
+            const { data: emp } = await supabase
+                .from('employees')
+                .select('master_role(nama_role)')
+                .eq('id', user.id)
+                .maybeSingle(); 
+
+            if (emp && emp.master_role) {
+                setUserRole(emp.master_role.nama_role.toUpperCase());
+            } else {
+                setUserRole('MITRA'); 
+            }
+        };
+        checkSession();
+    }, [navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setErrorMsg('');
-
-        if (password !== confirmPassword) {
-            setErrorMsg('Konfirmasi password tidak cocok!');
-            return;
-        }
-        if (password.length < 6) {
-            setErrorMsg('Password minimal harus 6 karakter!');
-            return;
-        }
-
         setLoading(true);
+        setErrorMsg('');
+        setSuccessMsg('');
+
+        if (newPassword !== confirmPassword) {
+            setErrorMsg('Kata sandi baru dan konfirmasi tidak cocok.');
+            setLoading(false);
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            setErrorMsg('Kata sandi minimal 6 karakter.');
+            setLoading(false);
+            return;
+        }
+
         try {
-            // 1. Dapatkan user aktif (sesi login saat ini dengan password default)
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-            if (userError || !user) throw new Error('Sesi tidak valid. Silakan login ulang.');
+            // 1. Update Kata Sandi di Supabase Auth
+            const { error: authError } = await supabase.auth.updateUser({
+                password: newPassword
+            });
 
-            // 2. Update password di Supabase Auth
-            const { error: updateError } = await supabase.auth.updateUser({ password: password });
-            if (updateError) throw new Error('Gagal merubah password: ' + updateError.message);
+            if (authError) throw new Error('Gagal memperbarui sandi: ' + authError.message);
 
-            // 3. Update status is_first_login di tabel employees menjadi false
-            const { error: empError } = await supabase.from('employees')
-                .update({ is_first_login: false })
-                .eq('id', user.id);
-            if (empError) throw new Error('Gagal update status profil: ' + empError.message);
+            // 2. Update flag is_first_login di tabel employees
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && userRole !== 'MITRA') {
+                await supabase.from('employees').update({ is_first_login: false }).eq('id', user.id);
+            }
 
-            alert('✅ Password berhasil diubah! Silakan login kembali menggunakan password baru Anda.');
+            setSuccessMsg('Kata sandi berhasil diperbarui! Mengalihkan ke Dashboard...');
 
-            // 4. Force Logout agar user login dengan kredensial baru (Best Practice)
-            await supabase.auth.signOut();
-            navigate('/login');
+            // 3. Arahkan kembali ke Dashboard sesuai Role setelah 1.5 detik
+            setTimeout(() => {
+                if (userRole === 'SUPER ADMIN') navigate('/superadmin/dashboard');
+                else if (userRole === 'SUPERVISOR') navigate('/supervisor/dashboard');
+                else if (userRole === 'DIREKTUR') navigate('/direktur/dashboard');
+                else if (userRole === 'REGULER') navigate('/reguler/dashboard');
+                else if (userRole === 'REKRUTMEN') navigate('/rekrutmen/dashboard');
+                else if (userRole === 'DOKUMEN') navigate('/dokumen/dashboard');
+                else if (userRole === 'PENDIDIKAN') navigate('/pendidikan/dashboard');
+                else if (userRole === 'ADMINISTRASI') navigate('/administrasi/dashboard');
+                else if (userRole === 'MITRA') navigate('/mitra/dashboard');
+                else navigate('/login');
+            }, 1500);
 
         } catch (error) {
             setErrorMsg(error.message);
@@ -55,41 +95,78 @@ export default function UbahPassword() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
-            <div style={{ background: 'white', padding: '40px', borderRadius: '15px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}>
-                
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
+            <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', width: '100%', maxWidth: '400px' }}>
+
                 <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                    <div style={{ background: '#e0e7ff', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}>
-                        <KeyRound size={30} color={brandNavy} />
+                    <div style={{ width: '60px', height: '60px', background: brandNavy, color: brandYellow, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}>
+                        <Lock size={30} />
                     </div>
-                    <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '1.5rem', fontWeight: 800 }}>Ubah Password</h2>
-                    <p style={{ color: '#64748b', fontSize: '0.85rem', margin: 0 }}>Ini adalah login pertama Anda. Wajib mengganti password default demi keamanan.</p>
+                    <h2 style={{ margin: 0, color: '#1e293b', fontWeight: 800 }}>Ubah Kata Sandi</h2>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '5px' }}>Amankan akun Anda dengan sandi baru.</p>
                 </div>
 
-                {errorMsg && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '10px 15px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>{errorMsg}</div>}
+                {errorMsg && (
+                    <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '12px 15px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+                        <AlertCircle size={16} /> {errorMsg}
+                    </div>
+                )}
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {successMsg && (
+                    <div style={{ background: '#dcfce7', color: '#166534', padding: '12px 15px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+                        <CheckCircle2 size={16} /> {successMsg}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '5px' }}>PASSWORD BARU</label>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>KATA SANDI BARU</label>
                         <div style={{ position: 'relative' }}>
-                            <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 6 karakter" style={{ width: '100%', padding: '10px 10px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc' }} />
+                            <Key size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                            <input
+                                type="password"
+                                required
+                                placeholder="Minimal 6 karakter"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)} 
+                                style={{ width: '100%', padding: '12px 15px 12px 45px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc', fontSize: '0.95rem', color: '#1e293b' }}
+                            />
                         </div>
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '5px' }}>KONFIRMASI PASSWORD</label>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>KONFIRMASI KATA SANDI</label>
                         <div style={{ position: 'relative' }}>
-                            <CheckCircle size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                            <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Ketik ulang password baru" style={{ width: '100%', padding: '10px 10px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc' }} />
+                            <Key size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                            <input
+                                type="password"
+                                required
+                                placeholder="Ulangi kata sandi baru"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                style={{ width: '100%', padding: '12px 15px 12px 45px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc', fontSize: '0.95rem', color: '#1e293b' }}
+                            />
                         </div>
                     </div>
 
-                    <button type="submit" disabled={loading} style={{ background: brandNavy, color: 'white', padding: '12px', borderRadius: '8px', border: 'none', fontWeight: 700, cursor: 'pointer', marginTop: '10px' }}>
-                        {loading ? 'Menyimpan...' : 'Simpan Password Baru'}
+                    <button
+                        type="submit"
+                        disabled={loading || successMsg !== ''}
+                        style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', borderRadius: '8px', border: 'none', fontWeight: 800, fontSize: '0.95rem', cursor: (loading || successMsg !== '') ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '10px', opacity: (loading || successMsg !== '') ? 0.7 : 1 }}
+                    >
+                        {loading ? 'Memproses...' : <>Simpan Kata Sandi <ArrowRight size={18} /></>}
                     </button>
+                    
+                    {!successMsg && (
+                        <button
+                            type="button"
+                            onClick={() => window.history.back()}
+                            style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', marginTop: '5px' }}
+                        >
+                            Batal & Kembali
+                        </button>
+                    )}
                 </form>
-
             </div>
         </div>
     );

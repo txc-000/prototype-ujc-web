@@ -1,7 +1,7 @@
 import { t } from '../translations';
 import NewsSection from '../components/NewsSection';
 import { useNavigate } from 'react-router-dom';
-import { LogIn } from 'lucide-react';
+import { LogIn, Users } from 'lucide-react'; // Tambahkan icon Users
 
 // IMPORT LOGO SECARA LANGSUNG (Pastikan file logo.png ada di folder src/assets/)
 import logoUJC from '../assets/logo.png';
@@ -63,13 +63,41 @@ export default function Home({ lang, newsData }) {
               {text.hero_desc}
             </p>
 
-            <div style={{ display: 'flex', gap: '20px' }}>
+            {/* ── GRUP TOMBOL CTA (CALL TO ACTION) ── */}
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
               <button style={{ background: brandYellow, color: brandNavy, padding: '1.2rem 2.5rem', borderRadius: '4px', border: 'none', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', boxShadow: `0 10px 30px rgba(253, 251, 6, 0.3)` }}>
                 {lang === 'ID' ? 'Daftar Sekarang' : '今すぐ登録'}
               </button>
+              
               <button style={{ background: 'transparent', color: brandYellow, padding: '1.2rem 2.5rem', borderRadius: '4px', border: `2px solid ${brandYellow}`, fontWeight: 800, fontSize: '1rem', cursor: 'pointer' }}>
                 {lang === 'ID' ? 'Lihat Program' : 'プログラムを見る'}
               </button>
+              
+              {/* ── TOMBOL ETALASE KANDIDAT ── */}
+              <button 
+                onClick={() => navigate('/etalase')}
+                style={{ 
+                    background: 'rgba(255, 255, 255, 0.1)', 
+                    color: 'white', 
+                    padding: '1.2rem 2.5rem', 
+                    borderRadius: '4px', 
+                    border: '1px solid rgba(255, 255, 255, 0.3)', 
+                    fontWeight: 800, 
+                    fontSize: '1rem', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    backdropFilter: 'blur(5px)',
+                    transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'; }}
+              >
+                <Users size={20} />
+                {lang === 'ID' ? 'Etalase Kandidat' : '候補者ショーケース'}
+              </button>
+
             </div>
           </div>
         </div>

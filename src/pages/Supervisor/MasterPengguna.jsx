@@ -44,7 +44,7 @@ export default function MasterPengguna() {
             // 2. Ambil Karyawan menggunakan Kunci Master (Bypass RLS)
             const { data: empData, error: empError } = await supabaseAdmin
                 .from('employees')
-                .select('*') // Hanya ambil data asli karyawan (Tanpa memaksakan relasi)
+                .select('*') // Hanya ambil data asli karyawan
                 .order('created_at', { ascending: false });
 
             if (empError) throw empError;
@@ -52,7 +52,6 @@ export default function MasterPengguna() {
             // 3. Gabungkan Jabatan (Role) secara manual di React
             if (empData && roleData) {
                 const combinedData = empData.map(emp => {
-                    // Cari nama role yang ID-nya cocok dengan role_id milik karyawan
                     const matchedRole = roleData.find(r => r.id === emp.role_id);
                     return {
                         ...emp,
@@ -105,7 +104,7 @@ export default function MasterPengguna() {
                     nama_lengkap: formData.nama_lengkap,
                     email_pribadi: formData.email_pribadi,
                     no_hp: formData.no_hp,
-                    role_id: formData.role_id,
+                    role_id: formData.role_id, // Gunakan role_id sesuai schema Anda
                     alamat: formData.alamat,
                     status: formData.status
                 }).eq('id', editingId);
@@ -132,7 +131,7 @@ export default function MasterPengguna() {
                     nama_lengkap: formData.nama_lengkap,
                     email_pribadi: formData.email_pribadi,
                     no_hp: formData.no_hp,
-                    role_id: formData.role_id,
+                    role_id: formData.role_id, // Gunakan role_id sesuai schema Anda
                     alamat: formData.alamat,
                     status: formData.status,
                     is_first_login: true 
@@ -147,7 +146,6 @@ export default function MasterPengguna() {
             }
             setIsModalOpen(false);
             
-            // Panggil ulang data setelah simpan berhasil
             await fetchData(); 
             
         } catch (error) { 
@@ -160,7 +158,6 @@ export default function MasterPengguna() {
     const handleDelete = async (id, nama) => {
         if (!window.confirm(`Yakin ingin menghapus akun dan data karyawan ${nama}?`)) return;
         try {
-            // Hapus dari Auth (Otomatis hapus dari tabel employees jika relasi Cascade aktif)
             const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
             if (authError) throw new Error('Gagal menghapus akun: ' + authError.message);
             
@@ -176,14 +173,12 @@ export default function MasterPengguna() {
         
         setIsLoading(true);
         try {
-            // 1. Reset password di Supabase Auth menggunakan kunci Admin
             const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
                 id, 
                 { password: 'UJC12345' }
             );
             if (authError) throw new Error('Gagal reset Auth: ' + authError.message);
 
-            // 2. Wajibkan user untuk ganti password saat login berikutnya
             const { error: empError } = await supabase.from('employees')
                 .update({ is_first_login: true })
                 .eq('id', id);
@@ -206,13 +201,18 @@ export default function MasterPengguna() {
         p.master_role?.nama_role?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    // --- UPDATE: WARNA BADGE SESUAI SOP BARU ---
     const getTipeBadge = (namaRole) => {
         const t = namaRole ? namaRole.toLowerCase() : '';
-        if (t === 'direktur') return { bg: '#8b5cf6', text: 'DIREKTUR' };
-        if (t === 'supervisor') return { bg: '#ec4899', text: 'SUPERVISOR' };
-        if (t === 'pendaftaran' || t === 'dokumen' || t === 'keuangan') return { bg: '#3b82f6', text: t.toUpperCase() };
-        if (t === 'pelatihan') return { bg: '#f59e0b', text: 'PELATIHAN' };
-        return { bg: '#64748b', text: t.toUpperCase() || 'UNDEFINED' };
+        if (t === 'super admin') return { bg: '#0f172a', text: 'SUPER ADMIN' }; // Slate
+        if (t === 'direktur') return { bg: '#8b5cf6', text: 'DIREKTUR' }; // Violet
+        if (t === 'supervisor') return { bg: '#ec4899', text: 'SUPERVISOR' }; // Pink
+        if (t === 'reguler') return { bg: '#3b82f6', text: 'REGULER' }; // Blue
+        if (t === 'rekrutmen') return { bg: '#10b981', text: 'REKRUTMEN' }; // Emerald
+        if (t === 'dokumen') return { bg: '#f59e0b', text: 'DOKUMEN' }; // Amber
+        if (t === 'pendidikan') return { bg: '#14b8a6', text: 'PENDIDIKAN' }; // Teal
+        if (t === 'administrasi') return { bg: '#6366f1', text: 'ADMINISTRASI' }; // Indigo
+        return { bg: '#64748b', text: namaRole ? namaRole.toUpperCase() : 'UNDEFINED' }; // Slate Gray (Default)
     };
 
     return (
@@ -226,7 +226,7 @@ export default function MasterPengguna() {
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                     <div style={{ position: 'relative' }}>
                         <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
-                        <input type="text" placeholder="Cari Nama / ID Karyawan..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px', fontSize: '0.9rem' }} />
+                        <input type="text" placeholder="Cari Nama / ID / Role..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px', fontSize: '0.9rem' }} />
                     </div>
                     <button onClick={() => openModal()} style={{ background: brandNavy, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Plus size={18} /> Tambah Karyawan
@@ -247,7 +247,7 @@ export default function MasterPengguna() {
                 </div>
             ) : viewMode === 'CARD' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {filteredData.map((user, i) => {
+                    {filteredData.map((user) => {
                         const tBadge = getTipeBadge(user.master_role?.nama_role);
                         return (
                             <div key={user.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
@@ -277,7 +277,6 @@ export default function MasterPengguna() {
                                         {activeDropdown === user.id && (
                                             <div ref={dropdownRef} style={dropdownContainer}>
                                                 <button onClick={() => openModal(user)} style={dropdownItemS}><Edit size={14} /> Ubah</button>
-                                                {/* --- TOMBOL RESET --- */}
                                                 <button onClick={() => handleResetPassword(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#f59e0b' }}><Key size={14} /> Reset Sandi</button>
                                                 <button onClick={() => handleDelete(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={14} /> Hapus</button>
                                             </div>
@@ -295,12 +294,14 @@ export default function MasterPengguna() {
                             <tr><th style={thP}>Identitas Pegawai</th><th style={thP}>Kontak Pribadi</th><th style={thP}>Status</th><th style={{ ...thP, textAlign: 'center' }}>Aksi</th></tr>
                         </thead>
                         <tbody>
-                            {filteredData.map(user => (
+                            {filteredData.map(user => {
+                                const tBadge = getTipeBadge(user.master_role?.nama_role);
+                                return (
                                 <tr key={user.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                     <td style={tdP}>
                                         <div style={{ fontWeight: 800, color: '#1e293b' }}>{user.nama_lengkap}</div>
-                                        <div style={{ fontSize: '0.75rem', color: getTipeBadge(user.master_role?.nama_role).bg, fontWeight: 700, marginTop: '2px' }}>
-                                            {user.master_role?.nama_role || 'TIDAK ADA JABATAN'} • {user.id_karyawan}
+                                        <div style={{ fontSize: '0.75rem', color: tBadge.bg, fontWeight: 700, marginTop: '2px' }}>
+                                            {tBadge.text} • {user.id_karyawan}
                                         </div>
                                     </td>
                                     <td style={{ ...tdP, fontSize: '0.8rem', color: '#475569' }}>
@@ -310,25 +311,21 @@ export default function MasterPengguna() {
                                     <td style={tdP}>
                                         <span style={{ background: user.status === 'Aktif' || !user.status ? '#dcfce7' : '#fee2e2', color: user.status === 'Aktif' || !user.status ? '#166534' : '#991b1b', padding: '4px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800 }}>{user.status || 'Aktif'}</span>
                                     </td>
-                                    <td style={{ ...tdP, textAlign: 'center' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                                            <div style={{ position: 'relative' }}>
-                                                <button onClick={() => setActiveDropdown(activeDropdown === user.id ? null : user.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
-                                                    <MoreVertical size={20} />
-                                                </button>
-                                                {activeDropdown === user.id && (
-                                                    <div ref={dropdownRef} style={{...dropdownContainer, right: '40px', top: '50%', transform: 'translateY(-50%)'}}>
-                                                        <button onClick={() => openModal(user)} style={dropdownItemS}><Edit size={14} /> Ubah</button>
-                                                        {/* --- TOMBOL RESET --- */}
-                                                        <button onClick={() => handleResetPassword(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#f59e0b' }}><Key size={14} /> Reset Sandi</button>
-                                                        <button onClick={() => handleDelete(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={14} /> Hapus</button>
-                                                    </div>
-                                                )}
+                                    <td style={{ ...tdP, textAlign: 'center', position: 'relative' }}>
+                                        <button onClick={() => setActiveDropdown(activeDropdown === user.id ? null : user.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
+                                            <MoreVertical size={20} />
+                                        </button>
+                                        {activeDropdown === user.id && (
+                                            <div ref={dropdownRef} style={{...dropdownContainer, right: '40px', top: '50%', transform: 'translateY(-50%)'}}>
+                                                <button onClick={() => openModal(user)} style={dropdownItemS}><Edit size={14} /> Ubah</button>
+                                                <button onClick={() => handleResetPassword(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#f59e0b' }}><Key size={14} /> Reset Sandi</button>
+                                                <button onClick={() => handleDelete(user.id, user.nama_lengkap)} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={14} /> Hapus</button>
                                             </div>
-                                        </div>
+                                        )}
                                     </td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                         </tbody>
                     </table>
                 </div>

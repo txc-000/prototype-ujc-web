@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { Globe, Lock, ChevronDown } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Globe, Lock, ChevronDown, Menu, X } from 'lucide-react';
 import { t } from '../translations';
 
 // IMPORT LOGO UJC
@@ -8,12 +8,20 @@ import logoUJC from '../assets/logo.png';
 
 export default function Navbar({ lang, setLang }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // STATE BARU UNTUK MENU HP
+  const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false); // STATE DROPDOWN DI HP
   const dropdownRef = useRef(null);
   const text = t[lang];
+  const location = useLocation();
 
   // BRAND COLORS UJC
   const brandNavy = '#101869';
   const brandYellow = '#fdfb06';
+
+  // Tutup menu mobile jika user berpindah halaman
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -35,11 +43,9 @@ export default function Navbar({ lang, setLang }) {
       }}>
         {/* Kumpulan Akses Internal & Portal */}
         <div style={{ display: 'flex', gap: '20px', fontWeight: 700, alignItems: 'center' }}>
-          <Link to="/mitra" className="topbar-link">
-            {lang === 'ID' ? 'MITRA' : 'パートナー'}
-          </Link>
           
-          {/* TOMBOL LOGIN SUDAH DIUPDATE DAN TERSAMBUNG KE /login */}
+          {/* TOMBOL "MITRA" DIHAPUS KARENA SMART LOGIN SUDAH MENG-COVERNYA */}
+          
           <Link to="/login" style={{ 
             background: brandYellow, 
             color: brandNavy, 
@@ -57,7 +63,7 @@ export default function Navbar({ lang, setLang }) {
           onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'none'}
           >
-            <Lock size={12} /> {lang === 'ID' ? 'LOGIN' : 'ログイン'}
+            <Lock size={12} /> {lang === 'ID' ? 'LOGIN SISTEM' : 'ログイン'}
           </Link>
         </div>
       </div>
@@ -77,19 +83,20 @@ export default function Navbar({ lang, setLang }) {
           
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', textDecoration: 'none' }}>
             {/* LOGO UJC */}
-            <img src={logoUJC} alt="UJC Logo" style={{ height: '45px', objectFit: 'contain' }} />
+            <img src={logoUJC} alt="UJC Logo" className="logo-img" />
             
             <div style={{ lineHeight: 1.1 }}>
-              <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', fontWeight: 800, color: brandNavy, margin: 0, letterSpacing: '0.5px' }}>
+              <h1 className="logo-text">
                 {text.lpk_name || 'UNIVERSAL JAPAN COURSE'}
               </h1>
-              <p style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700, margin: 0 }}>
+              <p className="logo-subtext">
                 {text.lpk_sub || 'Japan Vocational Training'}
               </p>
             </div>
           </Link>
 
-          <nav>
+          {/* ── MENU DESKTOP (AKAN HILANG DI HP) ── */}
+          <nav className="desktop-menu">
             <ul style={{ 
               display: 'flex', gap: '2rem', listStyle: 'none', 
               alignItems: 'center', fontSize: '0.85rem', fontWeight: 700, margin: 0, padding: 0 
@@ -121,12 +128,13 @@ export default function Navbar({ lang, setLang }) {
               </li>
 
               <li><Link to="/program" className="nav-link">{text.program}</Link></li>
+              <li><Link to="/etalase" className="nav-link">{lang === 'ID' ? 'Etalase Kandidat' : '候補者'}</Link></li>
               <li><Link to="/kontak" className="nav-link">{text.contact}</Link></li>
             </ul>
           </nav>
 
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {/* Tombol Ganti Bahasa */}
+          {/* ── TOMBOL BAHASA (DESKTOP) ── */}
+          <div className="desktop-menu" style={{ alignItems: 'center' }}>
             <button 
               onClick={() => setLang(lang === 'ID' ? 'JP' : 'ID')}
               style={{ 
@@ -142,10 +150,69 @@ export default function Navbar({ lang, setLang }) {
               <Globe size={14} color={brandYellow} /> {lang === 'ID' ? '🇯🇵 JP' : '🇮🇩 ID'}
             </button>
           </div>
+
+          {/* ── HAMBURGER BUTTON (HANYA MUNCUL DI HP) ── */}
+          <button 
+            className="mobile-toggle"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: brandNavy, padding: '5px' }}
+          >
+            {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
+          </button>
+
         </div>
+
+        {/* ── MOBILE MENU (TAMPIL KETIKA HAMBURGER DIKLIK) ── */}
+        {isMobileMenuOpen && (
+          <div className="mobile-menu" style={{ 
+            background: 'white', borderTop: '1px solid #f1f5f9', 
+            padding: '20px 5%', display: 'flex', flexDirection: 'column', gap: '15px',
+            boxShadow: '0 10px 20px rgba(0,0,0,0.05)', position: 'absolute', width: '100%', zIndex: 999
+          }}>
+            <Link to="/" className="mobile-nav-link">{text.home}</Link>
+            
+            <div 
+                onClick={() => setIsMobileDropdownOpen(!isMobileDropdownOpen)} 
+                className="mobile-nav-link" 
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+                {lang === 'ID' ? 'Profil LPK' : '会社概要'} 
+                <ChevronDown size={18} style={{ transform: isMobileDropdownOpen ? 'rotate(180deg)' : 'rotate(0)', transition: '0.3s' }} />
+            </div>
+
+            {isMobileDropdownOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '15px', borderLeft: `2px solid ${brandYellow}`, marginLeft: '5px' }}>
+                    <Link to="/visi-misi" className="mobile-nav-sublink">{lang === 'ID' ? 'Visi & Misi' : 'ビジョンとミッション'}</Link>
+                    <Link to="/latar-belakang" className="mobile-nav-sublink">{lang === 'ID' ? 'Latar Belakang' : '沿革'}</Link>
+                    <Link to="/legalitas" className="mobile-nav-sublink">{lang === 'ID' ? 'Legalitas' : '法人認可'}</Link>
+                </div>
+            )}
+
+            <Link to="/program" className="mobile-nav-link">{text.program}</Link>
+            <Link to="/etalase" className="mobile-nav-link">{lang === 'ID' ? 'Etalase Kandidat' : '候補者'}</Link>
+            <Link to="/kontak" className="mobile-nav-link">{text.contact}</Link>
+
+            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '15px', marginTop: '5px' }}>
+                <button 
+                  onClick={() => {
+                      setLang(lang === 'ID' ? 'JP' : 'ID');
+                      setIsMobileMenuOpen(false);
+                  }}
+                  style={{ 
+                    background: brandNavy, border: 'none', width: '100%', justifyContent: 'center',
+                    borderRadius: '8px', padding: '12px', fontSize: '0.9rem', 
+                    fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', 
+                    cursor: 'pointer', color: 'white'
+                  }}
+                >
+                  <Globe size={18} color={brandYellow} /> {lang === 'ID' ? 'Ubah ke Bahasa Jepang (JP)' : 'インドネシア語に変更 (ID)'}
+                </button>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* ── STYLING KHUSUS (HOVER) ── */}
+      {/* ── STYLING KHUSUS DENGAN MEDIA QUERIES ── */}
       <style>{`
         .topbar-link { color: rgba(255,255,255,0.8); text-decoration: none; transition: 0.2s; }
         .topbar-link:hover { color: #fdfb06; }
@@ -156,7 +223,27 @@ export default function Navbar({ lang, setLang }) {
         .dropdown-link { display: block; padding: 12px 20px; text-decoration: none; color: #334155; font-size: 0.85rem; font-weight: 600; transition: all 0.2s ease; }
         .dropdown-link:hover { background: #f8fafc; color: #101869; padding-left: 25px; border-left: 3px solid #fdfb06; }
         
+        .mobile-nav-link { color: #1e293b; text-decoration: none; font-weight: 700; font-size: 1rem; padding: 8px 0; display: block; cursor: pointer; }
+        .mobile-nav-sublink { color: #475569; text-decoration: none; font-weight: 600; font-size: 0.9rem; padding: 5px 0; display: block; }
+
+        .logo-img { height: 45px; object-fit: contain; }
+        .logo-text { font-family: var(--font-serif); font-size: 1.3rem; font-weight: 800; color: #101869; margin: 0; letter-spacing: 0.5px; }
+        .logo-subtext { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; margin: 0; }
+
         @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── MEDIA QUERIES UNTUK HP (MOBILE RESPONSIVE) ── */
+        .mobile-toggle { display: none; }
+
+        @media (max-width: 768px) {
+            .desktop-menu { display: none !important; }
+            .mobile-toggle { display: block; }
+            
+            /* Mengecilkan logo sedikit saat di HP */
+            .logo-img { height: 35px; }
+            .logo-text { font-size: 1rem; }
+            .logo-subtext { font-size: 0.5rem; letter-spacing: 0.1em; }
+        }
       `}</style>
     </>
   );

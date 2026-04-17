@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Filter, UserPlus, CheckCircle2, FileText, ChevronRight, Loader2, Info } from 'lucide-react';
+import { UserPlus, FileText, CheckCircle2, Clock, XCircle, Send, Building, Loader2, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const brandNavy = '#101869';
 
 export default function DashboardMitra() {
     const navigate = useNavigate();
-    const [candidates, setCandidates] = useState([]);
-    const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedCandidates, setSelectedCandidates] = useState([]);
-
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
     const [mitraProfile, setMitraProfile] = useState(null);
+    const [activeTab, setActiveTab] = useState('INPUT'); // 'INPUT' atau 'RIWAYAT'
+    const [riwayatSiswa, setRiwayatSiswa] = useState([]);
+
+    const [formData, setFormData] = useState({
+        nama_lengkap: '', nik: '', jenis_kelamin: 'L', no_hp: '', tempat_lahir: '', tanggal_lahir: ''
+    });
 
     useEffect(() => {
         const initDashboard = async () => {
             setIsLoading(true);
-            await fetchMitraProfile();
-            await fetchCandidates();
+            const profile = await fetchMitraProfile();
+            if (profile) {
+                await fetchRiwayatPengajuan(profile.id);
+            }
             setIsLoading(false);
         };
         initDashboard();
@@ -27,10 +33,7 @@ export default function DashboardMitra() {
     const fetchMitraProfile = async () => {
         try {
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            if (sessionError || !session) {
-                navigate('/login');
-                return;
-            }
+            if (sessionError || !session) { navigate('/login'); return null; }
 
             const { data: profile, error: profileError } = await supabase
                 .from('master_mitra_lokal')
@@ -41,87 +44,73 @@ export default function DashboardMitra() {
             if (profileError) throw profileError;
 
             if (profile) {
-                setMitraProfile({
-                    id: profile.id,
-                    nama: profile.nama_institusi,
-                    jenis: profile.jenis_institusi,
-                    kuota_tersisa: 15
-                });
+                const mp = { id: profile.id, nama: profile.nama_institusi, jenis: profile.jenis_institusi };
+                setMitraProfile(mp);
+                return mp;
             } else {
-                setMitraProfile({
-                    id: session.user.id,
-                    nama: 'Profil Belum Lengkap (Hubungi Admin)',
-                    jenis: 'Mitra',
-                    kuota_tersisa: 0
-                });
+                const dummy = { id: session.user.id, nama: 'Profil Mitra Belum Lengkap', jenis: 'Instansi' };
+                setMitraProfile(dummy);
+                return dummy;
             }
-
         } catch (error) {
             console.error("Gagal memuat profil mitra:", error.message);
+            return null;
         }
     };
 
-    const fetchCandidates = async () => {
+    const fetchRiwayatPengajuan = async (mitraId) => {
         try {
-            const allowedStatuses = [
-                'Tersedia', 'TERSEDIA', 'tersedia',
-                'Sedang Pelatihan', 'SEDANG PELATIHAN', 'sedang pelatihan',
-                'Aktif', 'AKTIF', 'aktif',
-                'PROSES', 'Proses', 'proses',
-                'AVAILABLE', 'Available', 'available',
-                'masih proses', 'Masih Proses', 'MASIH PROSES',
-                null
-            ];
-
+            // Menarik data siswa yang 'didaftarkan' oleh ID Mitra ini
             const { data, error } = await supabase
                 .from('students')
-                // 👇 HANYA MEMANGGIL KOLOM YANG PASTI ADA (Pendidikan dihapus sementara) 👇
-                .select('id, nama_lengkap, jenis_kelamin, tinggi_badan, berat_badan, tahap_sekarang, status_akhir')
-                .in('status_akhir', allowedStatuses) 
+                .select('id, nama_lengkap, jenis_kelamin, tahap_sekarang, status_akhir, created_at')
+                .eq('created_by', mitraId)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setCandidates(data || []);
+            setRiwayatSiswa(data || []);
         } catch (error) {
-            console.error("Error fetching candidates:", error.message);
+            console.error("Error fetching riwayat:", error.message);
         }
     };
 
-    const toggleSelection = (candidateId) => {
-        if (!mitraProfile || mitraProfile.kuota_tersisa === 0) {
-            alert("Profil Anda belum lengkap atau kuota habis. Silakan hubungi Administrator.");
-            return;
-        }
-
-        if (selectedCandidates.includes(candidateId)) {
-            setSelectedCandidates(selectedCandidates.filter(id => id !== candidateId));
-        } else {
-            if (selectedCandidates.length >= mitraProfile.kuota_tersisa) {
-                alert(`Maksimal pengajuan adalah ${mitraProfile.kuota_tersisa} kandidat berdasarkan sisa kuota Anda.`);
-                return;
-            }
-            setSelectedCandidates([...selectedCandidates, candidateId]);
-        }
+    const handleInputChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleAjukanKandidat = async () => {
-        if (selectedCandidates.length === 0) return alert("Pilih minimal 1 kandidat terlebih dahulu.");
+    const handleSubmitPengajuan = async (e) => {
+        e.preventDefault();
         
-        const confirm = window.confirm(`Anda akan mengajukan ${selectedCandidates.length} kandidat untuk proses selanjutnya. Lanjutkan?`);
-        if (!confirm) return;
+        if (!window.confirm(`Kirim pengajuan kandidat atas nama ${formData.nama_lengkap} ke LPK UJC?`)) return;
+        
+        setIsSubmitting(true);
+        try {
+            const payload = {
+                ...formData,
+                created_by: mitraProfile.id,
+                tahap_sekarang: 'PENGAJUAN MITRA', // Status khusus agar terpisah dari reguler biasa
+                status_akhir: 'MENUNGGU REVIEW',
+            };
 
-        alert("Pengajuan berhasil! Tim UJC akan segera menghubungi Anda untuk proses interview.");
-        setSelectedCandidates([]);
+            const { error } = await supabase.from('students').insert([payload]);
+            if (error) throw error;
+
+            alert("Kandidat berhasil diajukan! Tim UJC akan segera melakukan verifikasi.");
+            setFormData({ nama_lengkap: '', nik: '', jenis_kelamin: 'L', no_hp: '', tempat_lahir: '', tanggal_lahir: '' });
+            setActiveTab('RIWAYAT');
+            await fetchRiwayatPengajuan(mitraProfile.id);
+
+        } catch (err) {
+            alert("Gagal melakukan pengajuan: " + err.message);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
         navigate('/login');
     };
-
-    const filteredCandidates = candidates.filter(c => 
-        (c.nama_lengkap || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
 
     if (isLoading && !mitraProfile) {
         return (
@@ -135,6 +124,7 @@ export default function DashboardMitra() {
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
             
+            {/* ── SIDEBAR ── */}
             <aside style={{ width: '260px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '25px 20px', borderBottom: '1px solid #e2e8f0', background: brandNavy, color: 'white' }}>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Portal Mitra</h2>
@@ -142,20 +132,23 @@ export default function DashboardMitra() {
                 </div>
                 
                 <div style={{ padding: '20px' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '15px' }}>Profil Instansi</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '15px' }}>Instansi Pengirim</div>
                     <div style={{ fontWeight: 800, color: '#1e293b', marginBottom: '5px', lineHeight: '1.3' }}>
                         {mitraProfile?.nama || 'Mitra LPK'}
                     </div>
                     <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></span>
-                        {mitraProfile?.jenis || 'Agensi'}
+                        <Building size={14} /> {mitraProfile?.jenis || 'Agensi'}
                     </div>
                 </div>
 
                 <nav style={{ padding: '0 15px', display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
                     <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', margin: '10px 0 5px 5px' }}>Menu Utama</div>
-                    <button style={activeMenuS}><UserPlus size={18} /> Cari Kandidat</button>
-                    <button style={inactiveMenuS}><FileText size={18} /> Riwayat Pengajuan</button>
+                    <button onClick={() => setActiveTab('INPUT')} style={activeTab === 'INPUT' ? activeMenuS : inactiveMenuS}>
+                        <UserPlus size={18} /> Formulir Pengajuan
+                    </button>
+                    <button onClick={() => setActiveTab('RIWAYAT')} style={activeTab === 'RIWAYAT' ? activeMenuS : inactiveMenuS}>
+                        <FileText size={18} /> Status Kandidat
+                    </button>
                 </nav>
 
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0' }}>
@@ -165,120 +158,139 @@ export default function DashboardMitra() {
                 </div>
             </aside>
 
-            <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+            {/* ── MAIN CONTENT ── */}
+            <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh', overflowY: 'auto' }}>
                 
-                <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-                    <div>
-                        <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900, letterSpacing: '-0.5px' }}>Katalog Kandidat</h1>
-                        <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Info size={16}/> Pilih siswa yang tersedia untuk diajukan ke program Anda.
-                        </p>
-                    </div>
-                    
-                    <div style={{ display: 'flex', gap: '15px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                            <input 
-                                type="text" 
-                                placeholder="Cari nama kandidat..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '300px', fontSize: '0.95rem', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }} 
-                            />
-                        </div>
-                    </div>
-                </header>
+                {/* ── TAB: INPUT PENGAJUAN ── */}
+                {activeTab === 'INPUT' && (
+                    <div className="fade-in" style={{ maxWidth: '800px' }}>
+                        <header style={{ marginBottom: '30px' }}>
+                            <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900, letterSpacing: '-0.5px' }}>Formulir Pengajuan Kandidat</h1>
+                            <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Info size={16}/> Daftarkan siswa/lulusan Anda untuk mengikuti seleksi di LPK UJC.
+                            </p>
+                        </header>
 
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-                    {isLoading ? (
-                        <div style={{ textAlign: 'center', padding: '50px', color: '#64748b', fontWeight: 600 }}>Memuat daftar siswa...</div>
-                    ) : filteredCandidates.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '50px', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1', color: '#64748b', fontWeight: 600 }}>
-                            Tidak ada kandidat yang tersedia saat ini atau pencarian tidak ditemukan.
-                        </div>
-                    ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                            {filteredCandidates.map(candidate => {
-                                const isSelected = selectedCandidates.includes(candidate.id);
-                                const isReady = ['AVAILABLE', 'TERSEDIA'].includes((candidate.status_akhir || '').toUpperCase());
-                                
-                                return (
-                                    <div 
-                                        key={candidate.id} 
-                                        onClick={() => toggleSelection(candidate.id)}
-                                        style={{ 
-                                            background: 'white', 
-                                            borderRadius: '16px', 
-                                            padding: '25px', 
-                                            boxShadow: isSelected ? `0 0 0 2px ${brandNavy}, 0 10px 20px rgba(16,24,105,0.15)` : '0 4px 10px rgba(0,0,0,0.03)', 
-                                            border: `1px solid ${isSelected ? brandNavy : '#e2e8f0'}`, 
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                            position: 'relative',
-                                            display: 'flex',
-                                            flexDirection: 'column'
-                                        }}
-                                    >
-                                        <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
-                                            {isSelected ? <CheckCircle2 size={26} color={brandNavy} fill="#eff6ff" /> : <div style={{ width: '22px', height: '22px', borderRadius: '50%', border: '2px solid #cbd5e1' }}></div>}
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
-                                            <div style={{ width: '55px', height: '55px', borderRadius: '12px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#64748b', fontSize: '1.4rem' }}>
-                                                {candidate.nama_lengkap?.charAt(0) || 'U'}
-                                            </div>
-                                            <div>
-                                                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.15rem' }}>{candidate.nama_lengkap}</div>
-                                                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px', fontWeight: 600 }}>{candidate.jenis_kelamin === 'L' ? 'Laki-laki' : candidate.jenis_kelamin === 'P' ? 'Perempuan' : '-'}</div>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f8fafc', padding: '15px', borderRadius: '10px', marginBottom: '20px', flex: 1 }}>
-                                            <div>
-                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Fisik</div>
-                                                <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 700 }}>{candidate.tinggi_badan || '-'}cm / {candidate.berat_badan || '-'}kg</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Pendidikan</div>
-                                                {/* Dihardcode jadi "-" dulu sampai Tuan menemukan nama kolom aslinya */}
-                                                <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>-</div>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
-                                            <button onClick={(e) => { e.stopPropagation(); window.open(`/print-cv/${candidate.id}`, '_blank'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>Detail CV &rarr;</button>
-                                            
-                                            <span style={{ 
-                                                fontSize: '0.75rem', 
-                                                padding: '5px 12px', 
-                                                borderRadius: '20px', 
-                                                fontWeight: 800,
-                                                background: isReady ? '#dcfce7' : '#fef9c3', 
-                                                color: isReady ? '#166534' : '#854d0e',
-                                                border: `1px solid ${isReady ? '#bbf7d0' : '#fef08a'}`,
-                                                textTransform: 'capitalize'
-                                            }}>
-                                                {candidate.status_akhir ? candidate.status_akhir.toLowerCase() : 'Tersedia'}
-                                            </span>
-                                        </div>
+                        <form onSubmit={handleSubmitPengajuan} style={{ background: 'white', padding: '35px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
+                            <h3 style={{ margin: '0 0 25px 0', color: brandNavy, fontWeight: 800, borderBottom: '2px solid #f1f5f9', paddingBottom: '15px' }}>Identitas Dasar Siswa</h3>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                    <div>
+                                        <label style={labelForm}>Nama Lengkap (Sesuai KTP) *</label>
+                                        <input required name="nama_lengkap" value={formData.nama_lengkap} onChange={handleInputChange} style={inputForm} placeholder="Masukkan nama lengkap" />
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                                    <div>
+                                        <label style={labelForm}>Nomor NIK KTP *</label>
+                                        <input required name="nik" type="number" value={formData.nik} onChange={handleInputChange} style={inputForm} placeholder="16 digit NIK" />
+                                    </div>
+                                </div>
 
-                {selectedCandidates.length > 0 && mitraProfile && (
-                    <div style={{ background: 'white', padding: '20px 30px', borderRadius: '15px', boxShadow: '0 -10px 40px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, animation: 'slideUp 0.3s ease-out' }}>
-                        <style>{`@keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
-                        <div>
-                            <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1e293b' }}>{selectedCandidates.length} Kandidat Dipilih</span>
-                            <span style={{ margin: '0 12px', color: '#cbd5e1' }}>|</span>
-                            <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>Sisa Kuota: <b style={{color: brandNavy}}>{mitraProfile.kuota_tersisa - selectedCandidates.length}</b></span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '15px' }}>
-                            <button onClick={() => setSelectedCandidates([])} style={{ padding: '12px 25px', background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', transition: '0.2s' }}>Batal</button>
-                            <button onClick={handleAjukanKandidat} style={{ padding: '12px 35px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(16,24,105,0.25)', transition: '0.2s' }}>Ajukan Kandidat <ChevronRight size={18}/></button>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                    <div>
+                                        <label style={labelForm}>Jenis Kelamin *</label>
+                                        <select required name="jenis_kelamin" value={formData.jenis_kelamin} onChange={handleInputChange} style={inputForm}>
+                                            <option value="L">Laki-laki</option>
+                                            <option value="P">Perempuan</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={labelForm}>No. Handphone / WA *</label>
+                                        <input required name="no_hp" type="number" value={formData.no_hp} onChange={handleInputChange} style={inputForm} placeholder="Contoh: 08123456789" />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                    <div>
+                                        <label style={labelForm}>Tempat Lahir</label>
+                                        <input name="tempat_lahir" value={formData.tempat_lahir} onChange={handleInputChange} style={inputForm} placeholder="Kota/Kabupaten kelahiran" />
+                                    </div>
+                                    <div>
+                                        <label style={labelForm}>Tanggal Lahir</label>
+                                        <input type="date" name="tanggal_lahir" value={formData.tanggal_lahir} onChange={handleInputChange} style={inputForm} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#eff6ff', padding: '15px 20px', borderRadius: '8px', border: '1px dashed #93c5fd', marginTop: '30px', color: '#1e3a8a', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                <strong>Pemberitahuan:</strong> Pastikan data yang dimasukkan valid. Setelah diajukan, tim seleksi UJC akan memeriksa berkas dan menghubungi kandidat untuk proses wawancara awal/evaluasi.
+                            </div>
+
+                            <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'flex-end' }}>
+                                <button type="submit" disabled={isSubmitting} style={{ padding: '14px 30px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(16,24,105,0.25)', transition: '0.2s', opacity: isSubmitting ? 0.7 : 1 }}>
+                                    {isSubmitting ? 'Mengirim Data...' : <>Ajukan Kandidat <Send size={18}/></>}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* ── TAB: RIWAYAT PENGAJUAN ── */}
+                {activeTab === 'RIWAYAT' && (
+                    <div className="fade-in">
+                        <header style={{ marginBottom: '30px', flexShrink: 0 }}>
+                            <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900, letterSpacing: '-0.5px' }}>Status Kandidat Anda</h1>
+                            <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem' }}>Pantau status penerimaan siswa yang telah Anda ajukan ke UJC.</p>
+                        </header>
+
+                        <div style={{ background: 'white', borderRadius: '15px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                    <tr>
+                                        <th style={thP}>Nama Siswa</th>
+                                        <th style={thP}>Waktu Pengajuan</th>
+                                        <th style={thP}>Posisi / Tahap</th>
+                                        <th style={thP}>Status UJC</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoading ? (
+                                        <tr><td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Memuat riwayat...</td></tr>
+                                    ) : riwayatSiswa.length === 0 ? (
+                                        <tr><td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontWeight: 600 }}>Anda belum mengajukan kandidat sama sekali.</td></tr>
+                                    ) : (
+                                        riwayatSiswa.map(siswa => {
+                                            const status = cleanStr(siswa.status_akhir);
+                                            const tahap = cleanStr(siswa.tahap_sekarang);
+                                            
+                                            // Logika Pewarnaan Label
+                                            let icon = <Clock size={16} color="#d97706" />;
+                                            let bg = '#fef3c7', col = '#92400e';
+                                            
+                                            if (tahap === 'pengajuan mitra' || status === 'menunggu review') {
+                                                bg = '#fef3c7'; col = '#92400e'; icon = <Clock size={16} color="#92400e" />;
+                                            } else if (status === 'ditolak' || status === 'gagal') {
+                                                bg = '#fee2e2'; col = '#991b1b'; icon = <XCircle size={16} color="#991b1b" />;
+                                            } else {
+                                                // Jika sudah di-acc dan masuk reguler
+                                                bg = '#dcfce7'; col = '#166534'; icon = <CheckCircle2 size={16} color="#166534" />;
+                                            }
+
+                                            return (
+                                                <tr key={siswa.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                    <td style={tdP}>
+                                                        <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1rem' }}>{siswa.nama_lengkap}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>{siswa.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</div>
+                                                    </td>
+                                                    <td style={tdP}>
+                                                        <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                                                            {new Date(siswa.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                                        </div>
+                                                    </td>
+                                                    <td style={tdP}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: brandNavy }}>{siswa.tahap_sekarang}</span>
+                                                    </td>
+                                                    <td style={tdP}>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: bg, color: col, padding: '6px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                                                            {icon} {siswa.status_akhir || 'PROSES'}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -287,5 +299,12 @@ export default function DashboardMitra() {
     );
 }
 
+// ── STYLES ──
 const activeMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: '#eff6ff', color: brandNavy, border: 'none', borderRadius: '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 800, fontSize: '0.95rem' };
 const inactiveMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: 'transparent', color: '#64748b', border: 'none', borderRadius: '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 700, fontSize: '0.95rem', transition: '0.2s' };
+
+const labelForm = { display: 'block', fontSize: '0.8rem', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' };
+const inputForm = { width: '100%', padding: '12px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem', color: '#1e293b', background: '#f8fafc' };
+
+const thP = { padding: '18px 25px', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '1px', fontWeight: 800 };
+const tdP = { padding: '18px 25px', verticalAlign: 'middle' };

@@ -20,9 +20,7 @@ export default function LoginPage() {
 
         const inputVal = identifier.trim();
 
-        // 1. SMART LOGIN LOGIC (Proses di Belakang Layar)
-        // Jika teks mengandung '@', proses sebagai huruf kecil semua (Email)
-        // Jika tidak ada '@', proses sebagai huruf BESAR semua lalu tambah domain (ID Karyawan)
+        // 1. SMART LOGIN LOGIC
         const loginEmail = inputVal.includes('@') 
             ? inputVal.toLowerCase() 
             : `${inputVal.toUpperCase()}@internal.ujc.com`;
@@ -49,22 +47,29 @@ export default function LoginPage() {
 
                 const roleName = employee.master_role?.nama_role?.toUpperCase();
 
+                // --- PENGALIHAN KE HALAMAN UBAH PASSWORD ---
                 if (employee.is_first_login) {
-                    alert("Info: Ini adalah login pertama. Anda akan langsung diarahkan ke Dashboard sementara halaman Ubah Password sedang disiapkan.");
+                    navigate('/ubah-password');
+                    return; // Menghentikan eksekusi ke bawah agar tidak masuk ke dashboard
                 }
 
-                if (roleName === 'SUPERVISOR' || roleName === 'SUPER ADMIN') {
+                // --- UPDATE ROUTING SESUAI SOP BARU ---
+                if (roleName === 'SUPER ADMIN') {
+                    navigate('/superadmin/dashboard'); // Rute khusus untuk Super Admin (Developer)
+                } else if (roleName === 'SUPERVISOR') {
                     navigate('/supervisor/dashboard');
                 } else if (roleName === 'DIREKTUR') {
                     navigate('/direktur/dashboard');
-                } else if (roleName === 'PENDAFTARAN') {
-                    navigate('/pendaftaran/dashboard');
-                } else if (roleName === 'KEUANGAN') {
-                    navigate('/keuangan/dashboard');
+                } else if (roleName === 'REGULER') {
+                    navigate('/reguler/dashboard');
+                } else if (roleName === 'REKRUTMEN') {
+                    navigate('/rekrutmen/dashboard');
                 } else if (roleName === 'DOKUMEN') {
                     navigate('/dokumen/dashboard');
-                } else if (roleName === 'PELATIHAN') {
-                    navigate('/pelatihan/dashboard');
+                } else if (roleName === 'PENDIDIKAN') {
+                    navigate('/pendidikan/dashboard');
+                } else if (roleName === 'ADMINISTRASI') {
+                    navigate('/administrasi/dashboard');
                 } else {
                     throw new Error(`Role internal tidak dikenali: ${roleName || 'Kosong'}`);
                 }
@@ -77,7 +82,6 @@ export default function LoginPage() {
                     .maybeSingle();
 
                 if (mitra) {
-                    // ALUR MITRA
                     navigate('/mitra/dashboard');
                 } else {
                     throw new Error('Data profil Anda tidak ditemukan di sistem LPK maupun kemitraan.');
@@ -119,7 +123,7 @@ export default function LoginPage() {
                                 required
                                 placeholder="UJC-001 atau mitra@email.com"
                                 value={identifier}
-                                onChange={(e) => setIdentifier(e.target.value)} // <-- Kembali ke fungsi onChange standar
+                                onChange={(e) => setIdentifier(e.target.value)} 
                                 style={{ width: '100%', padding: '12px 15px 12px 45px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc', fontSize: '0.95rem', color: '#1e293b' }}
                             />
                         </div>
