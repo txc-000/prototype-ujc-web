@@ -20,7 +20,6 @@ import UbahPassword from './pages/Auth/UbahPassword';
 
 // ── IMPORT KOMPONEN DIVISI (SOP BARU) ──
 import DashboardReguler from './pages/Reguler/DashboardReguler';
-import DashboardRekrutmen from './pages/Rekrutmen/DashboardRekrutmen';
 import DashboardDokumen from './pages/Dokumen/DashboardDokumen';
 import DashboardPendidikan from './pages/Pendidikan/DashboardPendidikan';
 import DashboardAdministrasi from './pages/Administrasi/DashboardAdministrasi';
@@ -36,8 +35,15 @@ import DashboardAlumni from './pages/Alumni/DashboardAlumni';
 // ── IMPORT KOMPONEN MITRA ──
 import DashboardMitra from './pages/Mitra/DashboardMitra';
 
-// ── IMPORT KOMPONEN CETAK CV ──
+// ── IMPORT KOMPONEN CETAK CV & LAPORAN ──
 import PrintRirekisho from './components/PrintRirekisho'; 
+import PrintLaporanKaisha from './components/PrintLaporanKaisha';
+
+// ── IMPORT KOMPONEN SHOUSHIKI & SERTIFIKAT ──
+import PrintShoushiki1_10 from './components/PrintShoushiki1_10';
+import PrintShoushiki1_13 from './components/PrintShoushiki1_13';
+import PrintShoushiki1_20 from './components/PrintShoushiki1_20';
+import PrintSertifikatLulus from './components/PrintSertifikatLulus'; 
 
 // ── IMPORT KOMPONEN NOTIFIKASI GLOBAL ──
 import NotificationAlert from './components/NotificationAlert';
@@ -120,11 +126,9 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Sesuaikan pengecualian rute sistem dengan SOP baru.
-  // URL '/etalase' TIDAK dimasukkan ke sini agar Navbar utama tetap muncul di halaman tersebut.
-  const isSystemRoute = ['/reguler', '/rekrutmen', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/alumni', '/print-cv', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
+  // Daftar rute sistem (tanpa rekrutmen)
+  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
 
-  // Pengecualian tambahan: Jangan tampilkan loading screen saat di halaman login atau ubah password
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
     return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc', color: '#101869', fontWeight: 800 }}>Memeriksa Akses...</div>;
   }
@@ -133,7 +137,6 @@ function AppContent() {
     <>
       {!isSystemRoute && <Navbar lang={lang} setLang={setLang} />}
       
-      {/* ── NOTIFIKASI POP-UP GLOBAL AKAN MUNCUL DI SINI ── */}
       <NotificationAlert />
 
       <main>
@@ -154,27 +157,29 @@ function AppContent() {
           {/* ── RUTE COMMAND CENTER SUPER ADMIN ── */}
           <Route path="/superadmin/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN']}><DashboardSuperAdmin /></ProtectedRoute>} />
 
-          {/* ── RUTE DIVISI (SOP BARU) ── */}
+          {/* ── RUTE DIVISI PUSAT PENGENDALI ── */}
           <Route path="/reguler/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['REGULER', 'DIREKTUR', 'SUPERVISOR']}><DashboardReguler /></ProtectedRoute>} />
-          <Route path="/rekrutmen/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['REKRUTMEN', 'DIREKTUR', 'SUPERVISOR']}><DashboardRekrutmen /></ProtectedRoute>} />
           <Route path="/administrasi/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'DIREKTUR', 'SUPERVISOR']}><DashboardAdministrasi /></ProtectedRoute>} />
           <Route path="/dokumen/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'DIREKTUR', 'SUPERVISOR']}><DashboardDokumen /></ProtectedRoute>} />
           <Route path="/pendidikan/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDIDIKAN', 'DIREKTUR', 'SUPERVISOR']}><DashboardPendidikan /></ProtectedRoute>} />
           
-          {/* ── RUTE SUPERVISOR ── */}
+          {/* ── RUTE SUPERVISOR & DIREKTUR ── */}
           <Route path="/supervisor/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><DashboardSupervisor /></ProtectedRoute>} />
-
-          {/* ── RUTE DIREKTUR ── */}
           <Route path="/direktur/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DIREKTUR', 'SUPERVISOR']}><DashboardDirektur /></ProtectedRoute>} />
 
           {/* ── RUTE PANTAUAN ALUMNI ── */}
           <Route path="/alumni/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DIREKTUR', 'SUPERVISOR', 'DOKUMEN']}><DashboardAlumni /></ProtectedRoute>} />
 
-          {/* ── RUTE MITRA (AGENSI/SEKOLAH LOKAL) ── */}
+          {/* ── RUTE MITRA ── */}
           <Route path="/mitra/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['MITRA']}><DashboardMitra /></ProtectedRoute>} />
 
-          {/* ── RUTE CETAK CV ── */}
-          <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN', 'REKRUTMEN']}><PrintRirekisho /></ProtectedRoute>} />
+          {/* ── RUTE CETAK DOKUMEN ── */}
+          <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN', 'REGULER']}><PrintRirekisho /></ProtectedRoute>} />
+          <Route path="/print-laporan-kaisha/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'REGULER', 'DOKUMEN']}><PrintLaporanKaisha /></ProtectedRoute>} />
+          <Route path="/print-shoushiki-10/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_10 /></ProtectedRoute>} />
+          <Route path="/print-shoushiki-13" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_13 /></ProtectedRoute>} />
+          <Route path="/print-shoushiki-20/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_20 /></ProtectedRoute>} />
+          <Route path="/print-sertifikat/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDIDIKAN', 'SUPERVISOR', 'DIREKTUR']}><PrintSertifikatLulus /></ProtectedRoute>} />
 
           <Route path="/unauthorized" element={<div style={{ padding: '100px', textAlign: 'center' }}><h2>Akses Ditolak. Anda tidak memiliki izin ke halaman ini.</h2><button onClick={() => window.history.back()} style={{ padding: '10px 20px', background: '#101869', color: 'white', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>Kembali</button></div>} />
         </Routes>

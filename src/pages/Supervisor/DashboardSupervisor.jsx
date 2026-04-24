@@ -6,13 +6,14 @@ import MasterMitra from './MasterMitra';
 import MasterKaisha from './MasterKaisha';
 import MasterKumiai from './MasterKumiai';
 import MasterPengguna from './MasterPengguna';
+import MasterBidang from './MasterBidang'; 
 import { useNavigate } from 'react-router-dom';
 
 import {
     FileSignature, Eye, Search, LayoutDashboard,
     BarChart3, X, ChevronRight, Activity, ArrowRight, Building2, Briefcase,
     Layers, Archive, LogOut, MoreVertical,
-    LayoutGrid, List, Plus, Trash2, ChevronDown, HelpCircle, Users, Plane, ShieldCheck
+    LayoutGrid, List, Plus, Trash2, ChevronDown, HelpCircle, Users, Plane, ShieldCheck, FileText, Loader2, Save
 } from 'lucide-react';
 
 const cleanStr = (str) => str ? str.toString().trim().toLowerCase() : '';
@@ -23,7 +24,7 @@ const brandNavy = '#101869';
 const brandYellow = '#fdfb06';
 
 const PIPELINE_STAGES = [
-    'PENDIDIKAN REGULER', 'AVAILABLE', 'PRA-MENSETSU', 'INTERVIEW', 'MATCHED',
+    'PENDIDIKAN REGULER', 'AVAILABLE', 'PRA_MENSETSU', 'INTERVIEW', 'MATCHED',
     'PENGUMPULAN BERKAS', 'TTD KONTRAK', 'APPLY COE', 'APPLY VISA',
     'PENDIDIKAN DIKLAT', 'SIAP BERANGKAT'
 ];
@@ -71,9 +72,14 @@ export default function DashboardSupervisor() {
     const [activeTab, setActiveTab] = useState('SEMUA');
     const [selectedCV, setSelectedCV] = useState(null);
     const [viewMode, setViewMode] = useState('TABLE');
+    
+    // STATE JOB ORDER & DROPDOWN
     const [activeJobOrder, setActiveJobOrder] = useState(null);
     const [isJobOrderModalOpen, setIsJobOrderModalOpen] = useState(false);
     const [jobOrders, setJobOrders] = useState([]);
+    const [masterBidang, setMasterBidang] = useState([]);
+    const [masterKumiai, setMasterKumiai] = useState([]);
+    const [isSubmittingJO, setIsSubmittingJO] = useState(false);
     const [newJobOrder, setNewJobOrder] = useState({ job_id: '', perusahaan: '', bidang: '', kumiai: '', kuota: 0, terisi: 0, status: 'AKTIF', catatan: '' });
 
     useEffect(() => {
@@ -91,6 +97,20 @@ export default function DashboardSupervisor() {
             } catch (error) { setUserProfile({ inisial: 'A', nama: 'Administrator', email: 'admin@ujc.co.id', role: 'ADMIN' }); }
         };
         fetchUserProfile();
+        
+        const fetchDropdowns = async () => {
+            try {
+                const [bidangRes, kumiaiRes] = await Promise.all([
+                    supabase.from('master_bidang').select('nama_bidang'),
+                    supabase.from('master_kumiai').select('nama_kumiai')
+                ]);
+                if (bidangRes.data) setMasterBidang(bidangRes.data);
+                if (kumiaiRes.data) setMasterKumiai(kumiaiRes.data);
+            } catch (error) {
+                console.error("Gagal mengambil master dropdown:", error);
+            }
+        };
+        fetchDropdowns();
     }, []);
 
     useEffect(() => {
@@ -112,7 +132,7 @@ export default function DashboardSupervisor() {
 
                 setPipelineData([
                     { step: 'Reguler (Persiapan)', count: countByGroup(['PENDIDIKAN REGULER', 'AVAILABLE']), color: brandNavy },
-                    { step: 'Rekrutmen (Seleksi)', count: countByGroup(['PRA-MENSETSU', 'INTERVIEW', 'MATCHED']), color: '#f59e0b' },
+                    { step: 'Rekrutmen (Seleksi)', count: countByGroup(['PRA_MENSETSU', 'INTERVIEW', 'MATCHED']), color: '#f59e0b' },
                     { step: 'Dokumen (Legal)', count: countByGroup(['PENGUMPULAN BERKAS', 'TTD KONTRAK', 'APPLY COE', 'APPLY VISA']), color: '#8b5cf6' },
                     { step: 'Diklat & Terbang', count: countByGroup(['PENDIDIKAN DIKLAT', 'SIAP BERANGKAT']), color: '#10b981' },
                 ]);
@@ -182,7 +202,7 @@ export default function DashboardSupervisor() {
                 if (activeTab === 'LULUS') filteredData = data.filter(s => cleanStr(s.status_akhir) === 'lulus');
                 else if (activeTab === 'GAGAL') filteredData = data.filter(s => cleanStr(s.status_akhir) === 'gagal');
                 else if (activeTab === 'REGULER') filteredData = data.filter(s => ['PENDIDIKAN REGULER', 'AVAILABLE'].includes(s.tahap_sekarang) && isProses(s));
-                else if (activeTab === 'REKRUTMEN') filteredData = data.filter(s => ['PRA-MENSETSU', 'INTERVIEW', 'MATCHED'].includes(s.tahap_sekarang) && isProses(s));
+                else if (activeTab === 'REKRUTMEN') filteredData = data.filter(s => ['PRA_MENSETSU', 'INTERVIEW', 'MATCHED'].includes(s.tahap_sekarang) && isProses(s));
                 else if (activeTab === 'DOKUMEN') filteredData = data.filter(s => ['PENGUMPULAN BERKAS', 'TTD KONTRAK', 'APPLY COE', 'APPLY VISA'].includes(s.tahap_sekarang) && isProses(s));
                 else if (activeTab === 'KEBERANGKATAN') filteredData = data.filter(s => ['PENDIDIKAN DIKLAT', 'SIAP BERANGKAT'].includes(s.tahap_sekarang) && isProses(s));
                 else filteredData = data.filter(isProses);
@@ -193,7 +213,7 @@ export default function DashboardSupervisor() {
 
     const fetchJobOrders = async () => {
         try {
-            const { data, error } = await supabase.from('job_orders').select('*').order('created_at', { ascending: false });
+            const { data, error } = await supabase.from('job_orders').select('*');
             if (error) throw error;
             if (data) setJobOrders(data);
         } catch (err) { console.error("Gagal memuat Job Orders:", err); }
@@ -205,16 +225,23 @@ export default function DashboardSupervisor() {
         if (activeMenu === 'JOB_ORDER') fetchJobOrders();
     }, [activeMenu, activeTab, activeChart]);
 
+    // ── FUNGSI JOB ORDER ──
     const handleAddJobOrder = async (e) => {
         e.preventDefault();
+        setIsSubmittingJO(true);
         try {
-            const { error } = await supabase.from('job_orders').insert([newJobOrder]);
+            const payload = {
+                ...newJobOrder,
+                job_id: newJobOrder.job_id || `JO-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)}`
+            };
+            const { error } = await supabase.from('job_orders').insert([payload]);
             if (error) throw error;
             alert('Job Order berhasil ditambahkan!');
             setIsJobOrderModalOpen(false);
             setNewJobOrder({ job_id: '', perusahaan: '', bidang: '', kumiai: '', kuota: 0, terisi: 0, status: 'AKTIF', catatan: '' });
             fetchJobOrders();
         } catch (error) { alert(`Gagal menyimpan: ${error.message}`); }
+        finally { setIsSubmittingJO(false); }
     };
 
     const handleDeleteJobOrder = async (id, namaPerusahaan) => {
@@ -255,8 +282,14 @@ export default function DashboardSupervisor() {
         } catch (err) { alert(`Gagal menyimpan data.\nDetail: ${err.message}`); }
     };
 
-    const handleNextStage = async (id, currentStage) => {
+    const handleNextStage = async (id, currentStage, perusahaanTujuan) => {
         const currentIndex = PIPELINE_STAGES.indexOf(currentStage);
+        if (currentIndex >= PIPELINE_STAGES.indexOf('MATCHED') && (!perusahaanTujuan || perusahaanTujuan.trim() === '')) {
+            alert("⛔ DITOLAK: Siswa ini belum terikat dengan Perusahaan (Kaisha) manapun!\n\nSilakan klik 'Edit Data Rirekisho' dan isi kolom Perusahaan Tujuan terlebih dahulu sebelum melanjutkan ke tahap pengurusan berkas terbang.");
+            setActiveDropdown(null);
+            return;
+        }
+
         if (currentIndex >= 0 && currentIndex < PIPELINE_STAGES.length - 1) {
             const nextStage = PIPELINE_STAGES[currentIndex + 1];
             if (!window.confirm(`Pindahkan siswa ke tahap selanjutnya: ${nextStage}?`)) return;
@@ -281,8 +314,6 @@ export default function DashboardSupervisor() {
         } catch (error) { navigate('/login'); }
     };
 
-    if (activeJobOrder) return <JobOrderDetail jobOrder={activeJobOrder} onBack={() => { setActiveJobOrder(null); fetchJobOrders(); }} />;
-
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
 
@@ -302,23 +333,12 @@ export default function DashboardSupervisor() {
                         <div style={{ fontSize: '1rem', fontWeight: 800, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{userProfile.nama}</div>
                         <div style={{ fontSize: '0.7rem', color: brandYellow, fontWeight: 800, marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{userProfile.role}</div>
                         
-                        {/* ── TOMBOL KHUSUS SUPER ADMIN ── */}
                         {userProfile.role === 'SUPER ADMIN' && (
                             <button 
                                 onClick={() => navigate('/superadmin/dashboard')}
                                 style={{ 
-                                    marginTop: '10px', 
-                                    background: '#ef4444', 
-                                    color: 'white', 
-                                    border: 'none', 
-                                    padding: '5px 10px', 
-                                    borderRadius: '6px', 
-                                    fontSize: '0.65rem', 
-                                    fontWeight: 900, 
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px'
+                                    marginTop: '10px', background: '#ef4444', color: 'white', border: 'none', padding: '5px 10px', 
+                                    borderRadius: '6px', fontSize: '0.65rem', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
                                 }}
                             >
                                 <ShieldCheck size={12} /> KEMBALI KE PORTAL
@@ -331,9 +351,8 @@ export default function DashboardSupervisor() {
                 <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px', marginLeft: '10px' }}>Menu Navigasi</div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
-                    <button onClick={() => setActiveMenu('DASHBOARD')} style={menuS(activeMenu === 'DASHBOARD')}><LayoutDashboard size={18} /> Beranda</button>
+                    <button onClick={() => { setActiveMenu('DASHBOARD'); setActiveJobOrder(null); }} style={menuS(activeMenu === 'DASHBOARD')}><LayoutDashboard size={18} /> Beranda</button>
 
-                    {/* ── PINTASAN PANTAUAN ALUMNI ── */}
                     <button onClick={() => navigate('/alumni/dashboard')} style={menuS(false)}>
                         <Plane size={18} /> Pantauan Alumni
                     </button>
@@ -344,7 +363,7 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'TRANSAKSI' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'TRANSAKSI')}>
-                            <button onClick={() => setActiveMenu('JOB_ORDER')} style={subMenuS(activeMenu === 'JOB_ORDER')}><div style={subDot(activeMenu === 'JOB_ORDER')}></div> Job Order Kaisha</button>
+                            <button onClick={() => { setActiveMenu('JOB_ORDER'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'JOB_ORDER')}><div style={subDot(activeMenu === 'JOB_ORDER')}></div> Job Order Kaisha</button>
                             <button onClick={() => navigate('/reguler/dashboard')} style={subMenuS(false)}><div style={subDot(false)}></div> Pendaftaran Baru</button>                        </div>
                     </div>
 
@@ -354,9 +373,9 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'LAPORAN' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'LAPORAN')}>
-                            <button onClick={() => { setActiveMenu('LAPORAN_LULUS'); setActiveTab('LULUS'); }} style={subMenuS(activeMenu === 'LAPORAN_LULUS')}><div style={subDot(activeMenu === 'LAPORAN_LULUS')}></div> Daftar Peserta Lolos</button>
-                            <button onClick={() => { setActiveMenu('LAPORAN_GAGAL'); setActiveTab('GAGAL'); }} style={subMenuS(activeMenu === 'LAPORAN_GAGAL')}><div style={subDot(activeMenu === 'LAPORAN_GAGAL')}></div> Laporan Gagal</button>
-                            <button onClick={() => { setActiveMenu('LAPORAN_PERUSAHAAN'); setActiveTab('LULUS'); }} style={subMenuS(activeMenu === 'LAPORAN_PERUSAHAAN')}><div style={subDot(activeMenu === 'LAPORAN_PERUSAHAAN')}></div> Sebaran Penempatan</button>
+                            <button onClick={() => { setActiveMenu('LAPORAN_LULUS'); setActiveTab('LULUS'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_LULUS')}><div style={subDot(activeMenu === 'LAPORAN_LULUS')}></div> Daftar Peserta Lolos</button>
+                            <button onClick={() => { setActiveMenu('LAPORAN_GAGAL'); setActiveTab('GAGAL'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_GAGAL')}><div style={subDot(activeMenu === 'LAPORAN_GAGAL')}></div> Laporan Gagal</button>
+                            <button onClick={() => { setActiveMenu('LAPORAN_PERUSAHAAN'); setActiveTab('LULUS'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_PERUSAHAAN')}><div style={subDot(activeMenu === 'LAPORAN_PERUSAHAAN')}></div> Sebaran Penempatan</button>
                         </div>
                     </div>
 
@@ -366,11 +385,12 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'MASTER' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'MASTER')}>
-                            <button onClick={() => setActiveMenu('MASTER_MITRA')} style={subMenuS(activeMenu === 'MASTER_MITRA')}><div style={subDot(activeMenu === 'MASTER_MITRA')}></div> Mitra Lokal</button>
-                            <button onClick={() => setActiveMenu('MASTER_KAISHA')} style={subMenuS(activeMenu === 'MASTER_KAISHA')}><div style={subDot(activeMenu === 'MASTER_KAISHA')}></div> Perusahaan (Kaisha)</button>
-                            <button onClick={() => setActiveMenu('MASTER_KUMIAI')} style={subMenuS(activeMenu === 'MASTER_KUMIAI')}><div style={subDot(activeMenu === 'MASTER_KUMIAI')}></div> Asosiasi (Kumiai)</button>
-                            <button onClick={() => { setActiveMenu('MASTER_CV'); setActiveTab('SEMUA'); }} style={subMenuS(activeMenu === 'MASTER_CV')}><div style={subDot(activeMenu === 'MASTER_CV')}></div> Siswa LPK</button>
-                            <button onClick={() => setActiveMenu('MASTER_PENGGUNA')} style={subMenuS(activeMenu === 'MASTER_PENGGUNA')}><div style={subDot(activeMenu === 'MASTER_PENGGUNA')}></div> Pengguna Internal</button>
+                            <button onClick={() => { setActiveMenu('MASTER_MITRA'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_MITRA')}><div style={subDot(activeMenu === 'MASTER_MITRA')}></div> Mitra Lokal</button>
+                            <button onClick={() => { setActiveMenu('MASTER_KAISHA'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_KAISHA')}><div style={subDot(activeMenu === 'MASTER_KAISHA')}></div> Perusahaan (Kaisha)</button>
+                            <button onClick={() => { setActiveMenu('MASTER_KUMIAI'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_KUMIAI')}><div style={subDot(activeMenu === 'MASTER_KUMIAI')}></div> Asosiasi (Kumiai)</button>
+                            <button onClick={() => { setActiveMenu('MASTER_BIDANG'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_BIDANG')}><div style={subDot(activeMenu === 'MASTER_BIDANG')}></div> Bidang & Jurusan</button>
+                            <button onClick={() => { setActiveMenu('MASTER_CV'); setActiveTab('SEMUA'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_CV')}><div style={subDot(activeMenu === 'MASTER_CV')}></div> Siswa LPK</button>
+                            <button onClick={() => { setActiveMenu('MASTER_PENGGUNA'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'MASTER_PENGGUNA')}><div style={subDot(activeMenu === 'MASTER_PENGGUNA')}></div> Pengguna Internal</button>
                         </div>
                     </div>
 
@@ -394,300 +414,315 @@ export default function DashboardSupervisor() {
             {/* ── MAIN CONTENT ── */}
             <main style={{ flex: 1, marginLeft: '280px', padding: '40px', overflowY: 'auto' }}>
 
-                {/* ── DASHBOARD ── */}
-                {activeMenu === 'DASHBOARD' && (
+                {/* ── PERBAIKAN: TAMPILKAN JOB ORDER DETAIL DI SINI ── */}
+                {activeJobOrder ? (
                     <div className="fade-in">
-                        <header style={{ marginBottom: '30px' }}><h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 10px 0' }}>Beranda Operasional (Real-Time)</h1><p style={{ color: '#64748b', margin: 0 }}>Pantau distribusi dan metrik data siswa dari seluruh Divisi.</p></header>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
-                            <CircleProgress percentage={Math.min(100, Math.round((stats.aktif / Math.max(1, stats.totalTerdaftar)) * 100))} color={brandNavy} title="Pendaftaran (Aktif)" value={stats.aktif} subtitle={`Dari total ${stats.totalTerdaftar} pendaftar`} />
-                            <CircleProgress percentage={stats.persenLulus} color="#10b981" title="Kelulusan" value={stats.lulus} subtitle="Siswa berhasil ditempatkan" />
-                            <CircleProgress percentage={Math.min(100, Math.round((stats.gagal / Math.max(1, stats.totalTerdaftar)) * 100))} color="#ef4444" title="Siswa Gagal" value={stats.gagal} subtitle="Siswa gagal/mengundurkan diri" />
-                        </div>
-
-                        <div style={{ background: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '30px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '20px', marginBottom: '30px' }}>
-                                <div>
-                                    <h3 style={{ margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}><BarChart3 size={22} color={brandNavy} /> Analisis Grafik Interaktif</h3>
-                                    <p style={{ margin: '5px 0 0 32px', fontSize: '0.8rem', color: '#94a3b8' }}>Klik diagram batang (bar) untuk melihat detail nama siswa.</p>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-                                    <button onClick={() => setActiveChart('MONTHLY_TREND')} style={tabS(activeChart === 'MONTHLY_TREND')}>Tren Bulanan</button>
-                                    <button onClick={() => setActiveChart('ALL')} style={tabS(activeChart === 'ALL')}>Semua Tahap</button>
-                                    <button onClick={() => setActiveChart('RESULT')} style={tabS(activeChart === 'RESULT')}>Lulus/Gagal</button>
-                                    <button onClick={() => setActiveChart('COMPANY_SPREAD')} style={{ ...tabS(activeChart === 'COMPANY_SPREAD'), background: activeChart === 'COMPANY_SPREAD' ? '#ec4899' : 'transparent', color: activeChart === 'COMPANY_SPREAD' ? 'white' : '#64748b' }}>🌍 Sebaran Kaisha</button>
-                                    <span style={{ borderLeft: '2px solid #cbd5e1', margin: '0 5px' }}></span>
-                                    {PIPELINE_STAGES.slice(0, 5).map(stage => (
-                                        <button key={stage} onClick={() => setActiveChart(stage)} style={tabS(activeChart === stage)}>{stage.substring(0, 10)}...</button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', height: '280px', paddingBottom: '20px', paddingX: '20px' }}>
-                                {chartData.map((data, i) => {
-                                    const heightPct = data.value === 0 ? 5 : (data.value / maxChartCount) * 100;
-                                    return (
-                                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative' }}>
-                                            <div style={{ position: 'absolute', top: `calc(${100 - heightPct}% - 30px)`, background: '#1e293b', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800, transition: 'top 0.4s ease' }}>{data.value}</div>
-                                            <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', width: '100%', padding: '0 10%' }}>
-                                                <div
-                                                    className="chart-bar"
-                                                    onClick={() => data.value > 0 && setChartDetailModal(data)}
-                                                    style={{ width: '100%', background: data.color, height: `${heightPct}%`, borderRadius: '6px 6px 0 0', transition: 'all 0.4s ease', opacity: data.value === 0 ? 0.3 : 1, cursor: data.value > 0 ? 'pointer' : 'default' }}
-                                                    title={data.value > 0 ? "Klik untuk lihat detail siswa" : ""}
-                                                ></div>
-                                            </div>
-                                            <div style={{ position: 'absolute', bottom: '-25px', width: '100%', textAlign: 'center', fontSize: '0.65rem', color: '#64748b', fontWeight: 700 }}>{data.label}</div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-
-                        <div style={{ background: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                            <h3 style={{ margin: '0 0 25px 0', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}><Activity size={22} color="#10b981" /> Pipeline Conveyor Terpusat</h3>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                {pipelineData.map((item, index) => (
-                                    <React.Fragment key={index}>
-                                        <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderTop: `5px solid ${item.color}`, borderRadius: '10px', padding: '25px 10px', textAlign: 'center' }}>
-                                            <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e293b', marginBottom: '5px' }}>{item.count}</div>
-                                            <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{item.step}</div>
-                                        </div>
-                                        {index < pipelineData.length - 1 && <div style={{ padding: '0 10px', color: '#cbd5e1' }}><ChevronRight size={28} /></div>}
-                                    </React.Fragment>
-                                ))}
-                            </div>
-                        </div>
+                        <JobOrderDetail jobOrder={activeJobOrder} onBack={() => { setActiveJobOrder(null); fetchJobOrders(); }} />
                     </div>
-                )}
+                ) : (
+                    <>
+                        {/* ── DASHBOARD ── */}
+                        {activeMenu === 'DASHBOARD' && (
+                            <div className="fade-in">
+                                <header style={{ marginBottom: '30px' }}><h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 10px 0' }}>Beranda Operasional (Real-Time)</h1><p style={{ color: '#64748b', margin: 0 }}>Pantau distribusi dan metrik data siswa dari seluruh Divisi.</p></header>
 
-                {/* ── MASTER MITRA, KAISHA, KUMIAI ── */}
-                {activeMenu === 'MASTER_MITRA' && <MasterMitra />}
-                {activeMenu === 'MASTER_KAISHA' && <MasterKaisha />}
-                {activeMenu === 'MASTER_KUMIAI' && <MasterKumiai />}
-                {activeMenu === 'MASTER_PENGGUNA' && <MasterPengguna />}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+                                    <CircleProgress percentage={Math.min(100, Math.round((stats.aktif / Math.max(1, stats.totalTerdaftar)) * 100))} color={brandNavy} title="Pendaftaran (Aktif)" value={stats.aktif} subtitle={`Dari total ${stats.totalTerdaftar} pendaftar`} />
+                                    <CircleProgress percentage={stats.persenLulus} color="#10b981" title="Kelulusan" value={stats.lulus} subtitle="Siswa berhasil ditempatkan" />
+                                    <CircleProgress percentage={Math.min(100, Math.round((stats.gagal / Math.max(1, stats.totalTerdaftar)) * 100))} color="#ef4444" title="Siswa Gagal" value={stats.gagal} subtitle="Siswa gagal/mengundurkan diri" />
+                                </div>
 
-                {/* ── MANAJEMEN SISWA & LAPORAN ── */}
-                {['MASTER_CV', 'LAPORAN_LULUS', 'LAPORAN_GAGAL', 'LAPORAN_PERUSAHAAN'].includes(activeMenu) && (
-                    <div className="fade-in">
-                        <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <h1 style={{ fontSize: '2rem', color: '#1e293b', marginBottom: '15px' }}>
-                                    {activeMenu === 'MASTER_CV' ? 'Manajemen Siswa LPK' : activeMenu === 'LAPORAN_LULUS' ? 'Laporan Kelulusan' : activeMenu === 'LAPORAN_PERUSAHAAN' ? 'Laporan Penempatan Perusahaan' : 'Laporan Gagal/Mundur'}
-                                </h1>
-                                {activeMenu === 'MASTER_CV' && (
-                                    <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '6px', borderRadius: '10px' }}>
-                                        {['SEMUA', 'REGULER', 'REKRUTMEN', 'DOKUMEN', 'KEBERANGKATAN'].map(tab => (
-                                            <button key={tab} onClick={() => setActiveTab(tab)} style={tabS(activeTab === tab)}>{tab}</button>
+                                <div style={{ background: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '30px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '20px', marginBottom: '30px' }}>
+                                        <div>
+                                            <h3 style={{ margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}><BarChart3 size={22} color={brandNavy} /> Analisis Grafik Interaktif</h3>
+                                            <p style={{ margin: '5px 0 0 32px', fontSize: '0.8rem', color: '#94a3b8' }}>Klik diagram batang (bar) untuk melihat detail nama siswa.</p>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                                            <button onClick={() => setActiveChart('MONTHLY_TREND')} style={tabS(activeChart === 'MONTHLY_TREND')}>Tren Bulanan</button>
+                                            <button onClick={() => setActiveChart('ALL')} style={tabS(activeChart === 'ALL')}>Semua Tahap</button>
+                                            <button onClick={() => setActiveChart('RESULT')} style={tabS(activeChart === 'RESULT')}>Lulus/Gagal</button>
+                                            <button onClick={() => setActiveChart('COMPANY_SPREAD')} style={{ ...tabS(activeChart === 'COMPANY_SPREAD'), background: activeChart === 'COMPANY_SPREAD' ? '#ec4899' : 'transparent', color: activeChart === 'COMPANY_SPREAD' ? 'white' : '#64748b' }}>🌍 Sebaran Kaisha</button>
+                                            <span style={{ borderLeft: '2px solid #cbd5e1', margin: '0 5px' }}></span>
+                                            {PIPELINE_STAGES.slice(0, 5).map(stage => (
+                                                <button key={stage} onClick={() => setActiveChart(stage)} style={tabS(activeChart === stage)}>{stage.substring(0, 10)}...</button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', height: '280px', paddingBottom: '20px', paddingX: '20px' }}>
+                                        {chartData.map((data, i) => {
+                                            const heightPct = data.value === 0 ? 5 : (data.value / maxChartCount) * 100;
+                                            return (
+                                                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative' }}>
+                                                    <div style={{ position: 'absolute', top: `calc(${100 - heightPct}% - 30px)`, background: '#1e293b', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800, transition: 'top 0.4s ease' }}>{data.value}</div>
+                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', width: '100%', padding: '0 10%' }}>
+                                                        <div
+                                                            className="chart-bar"
+                                                            onClick={() => data.value > 0 && setChartDetailModal(data)}
+                                                            style={{ width: '100%', background: data.color, height: `${heightPct}%`, borderRadius: '6px 6px 0 0', transition: 'all 0.4s ease', opacity: data.value === 0 ? 0.3 : 1, cursor: data.value > 0 ? 'pointer' : 'default' }}
+                                                            title={data.value > 0 ? "Klik untuk lihat detail siswa" : ""}
+                                                        ></div>
+                                                    </div>
+                                                    <div style={{ position: 'absolute', bottom: '-25px', width: '100%', textAlign: 'center', fontSize: '0.65rem', color: '#64748b', fontWeight: 700 }}>{data.label}</div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div style={{ background: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                                    <h3 style={{ margin: '0 0 25px 0', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700 }}><Activity size={22} color="#10b981" /> Pipeline Conveyor Terpusat</h3>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        {pipelineData.map((item, index) => (
+                                            <React.Fragment key={index}>
+                                                <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderTop: `5px solid ${item.color}`, borderRadius: '10px', padding: '25px 10px', textAlign: 'center' }}>
+                                                    <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e293b', marginBottom: '5px' }}>{item.count}</div>
+                                                    <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{item.step}</div>
+                                                </div>
+                                                {index < pipelineData.length - 1 && <div style={{ padding: '0 10px', color: '#cbd5e1' }}><ChevronRight size={28} /></div>}
+                                            </React.Fragment>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── MASTER MITRA, KAISHA, KUMIAI, BIDANG ── */}
+                        {activeMenu === 'MASTER_MITRA' && <MasterMitra />}
+                        {activeMenu === 'MASTER_KAISHA' && <MasterKaisha />}
+                        {activeMenu === 'MASTER_KUMIAI' && <MasterKumiai />}
+                        {activeMenu === 'MASTER_BIDANG' && <MasterBidang />}
+                        {activeMenu === 'MASTER_PENGGUNA' && <MasterPengguna />}
+
+                        {/* ── MANAJEMEN SISWA & LAPORAN ── */}
+                        {['MASTER_CV', 'LAPORAN_LULUS', 'LAPORAN_GAGAL', 'LAPORAN_PERUSAHAAN'].includes(activeMenu) && (
+                            <div className="fade-in">
+                                <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h1 style={{ fontSize: '2rem', color: '#1e293b', marginBottom: '15px', fontWeight: 900 }}>
+                                            {activeMenu === 'MASTER_CV' ? 'Manajemen Siswa LPK' : activeMenu === 'LAPORAN_LULUS' ? 'Laporan Kelulusan' : activeMenu === 'LAPORAN_PERUSAHAAN' ? 'Laporan Penempatan Perusahaan' : 'Laporan Gagal/Mundur'}
+                                        </h1>
+                                        {activeMenu === 'MASTER_CV' && (
+                                            <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '6px', borderRadius: '10px' }}>
+                                                {['SEMUA', 'REGULER', 'REKRUTMEN', 'DOKUMEN', 'KEBERANGKATAN'].map(tab => (
+                                                    <button key={tab} onClick={() => setActiveTab(tab)} style={tabS(activeTab === tab)}>{tab}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
+                                            <input type="text" placeholder="Cari Nama / Kaisha..." onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '300px', fontSize: '0.9rem' }} />
+                                        </div>
+                                        <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+                                            <button onClick={() => setViewMode('CARD')} style={viewBtnS(viewMode === 'CARD')} title="Bentuk Card"><LayoutGrid size={18} /></button>
+                                            <button onClick={() => setViewMode('TABLE')} style={viewBtnS(viewMode === 'TABLE')} title="Bentuk Label"><List size={18} /></button>
+                                        </div>
+                                    </div>
+                                </header>
+
+                                {filteredStudents && filteredStudents.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8', background: 'white', borderRadius: '15px' }}>Belum ada data di tahapan ini.</div>
+                                ) : viewMode === 'TABLE' ? (
+                                    <div style={{ background: 'white', borderRadius: '15px', overflow: 'visible', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead style={{ background: '#f8fafc' }}>
+                                                <tr><th style={thP}>Identitas Siswa</th><th style={thP}>Tahap / Posisi</th><th style={thP}>Status Akhir</th><th style={{ ...thP, textAlign: 'center' }}>Aksi</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredStudents.map(s => (
+                                                    <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                        <td style={tdP}>
+                                                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{s.nama_lengkap}</div>
+                                                            <div style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 700, marginTop: '4px' }}>{s.nama_jepang || '(Nama Jepang Belum Diisi)'}</div>
+                                                        </td>
+                                                        <td style={tdP}>
+                                                            <span style={{ fontWeight: 700, color: '#64748b', fontSize: '0.85rem' }}>{s.tahap_sekarang}</span>
+                                                            {s.perusahaan_tujuan && ['LAPORAN_LULUS', 'LAPORAN_PERUSAHAAN'].includes(activeMenu) && (
+                                                                <div style={{ fontSize: '0.75rem', color: '#ec4899', marginTop: '4px', fontWeight: 800 }}>📍 {s.perusahaan_tujuan}</div>
+                                                            )}
+                                                        </td>
+                                                        <td style={tdP}>
+                                                            <span style={tagS(s.status_akhir)}>{s.status_akhir || 'Proses'}</span>
+                                                        </td>
+                                                        <td style={{ ...tdP, textAlign: 'center', position: 'relative' }}>
+                                                            <button onClick={() => setActiveDropdown(activeDropdown === s.id ? null : s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
+                                                                <MoreVertical size={20} />
+                                                            </button>
+                                                            {activeDropdown === s.id && (
+                                                                <div ref={dropdownRef} style={dropdownContainer}>
+                                                                    <button onClick={() => { window.open(`/print-cv/${s.id}`, '_blank'); setActiveDropdown(null); }} style={dropdownItemS}><Eye size={16} /> Preview Rirekisho</button>
+                                                                    <button onClick={() => { setSelectedCV(s); setActiveDropdown(null); }} style={dropdownItemS}><FileSignature size={16} /> Edit Data Rirekisho</button>
+                                                                    {isProses(s) && <div style={{ borderTop: '1px solid #f1f5f9', margin: '5px 0' }}></div>}
+                                                                    {isProses(s) && <button onClick={() => handleNextStage(s.id, s.tahap_sekarang, s.perusahaan_tujuan)} style={{ ...dropdownItemS, color: '#059669' }}><ArrowRight size={16} /> Lanjut Tahap</button>}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                                        {filteredStudents.map(s => (
+                                            <div key={s.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                                                    <div style={{ paddingRight: '10px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', lineHeight: '1.2', marginBottom: '4px' }}>{s.nama_lengkap}</div>
+                                                        <div style={{ color: '#059669', fontSize: '0.8rem', fontWeight: 700 }}>{s.nama_jepang || '(Nama Jepang Kosong)'}</div>
+                                                    </div>
+                                                    <button onClick={() => setActiveDropdown(activeDropdown === s.id ? null : s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px', alignSelf: 'flex-start' }}>
+                                                        <MoreVertical size={20} />
+                                                    </button>
+
+                                                    {activeDropdown === s.id && (
+                                                        <div ref={dropdownRef} style={{ ...dropdownContainer, right: '15px', top: '40px' }}>
+                                                            <button onClick={() => { window.open(`/print-cv/${s.id}`, '_blank'); setActiveDropdown(null); }} style={dropdownItemS}><Eye size={16} /> Preview Rirekisho</button>
+                                                            <button onClick={() => { setSelectedCV(s); setActiveDropdown(null); }} style={dropdownItemS}><FileSignature size={16} /> Edit Data Rirekisho</button>
+                                                            {isProses(s) && <div style={{ borderTop: '1px solid #f1f5f9', margin: '5px 0' }}></div>}
+                                                            {isProses(s) && <button onClick={() => handleNextStage(s.id, s.tahap_sekarang, s.perusahaan_tujuan)} style={{ ...dropdownItemS, color: '#059669' }}><ArrowRight size={16} /> Lanjut Tahap</button>}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div style={{ flex: 1, marginBottom: '20px' }}>
+                                                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Tahap Saat Ini</div>
+                                                    <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.95rem' }}>{s.tahap_sekarang}</div>
+                                                    {s.perusahaan_tujuan && (
+                                                        <div style={{ fontSize: '0.8rem', color: '#ec4899', marginTop: '6px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <Building2 size={14} /> {s.perusahaan_tujuan}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>ID: {s.id.substring(0, 6)}...</span>
+                                                    <span style={tagS(s.status_akhir)}>{s.status_akhir || 'Proses'}</span>
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
+                        )}
 
-                            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                                <div style={{ position: 'relative' }}>
-                                    <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
-                                    <input type="text" placeholder="Cari Nama / Kaisha..." onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '300px', fontSize: '0.9rem' }} />
-                                </div>
-                                <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
-                                    <button onClick={() => setViewMode('CARD')} style={viewBtnS(viewMode === 'CARD')} title="Bentuk Card"><LayoutGrid size={18} /></button>
-                                    <button onClick={() => setViewMode('TABLE')} style={viewBtnS(viewMode === 'TABLE')} title="Bentuk Label"><List size={18} /></button>
-                                </div>
-                            </div>
-                        </header>
+                        {/* ── JOB ORDER (KAISHA) ── */}
+                        {activeMenu === 'JOB_ORDER' && (
+                            <div className="fade-in">
+                                <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 5px 0', fontWeight: 900 }}>Job Order (Kaisha)</h1>
+                                        <p style={{ color: '#64748b', margin: 0 }}>Daftar permintaan tenaga kerja dari perusahaan Jepang.</p>
+                                    </div>
 
-                        {filteredStudents && filteredStudents.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8', background: 'white', borderRadius: '15px' }}>Belum ada data di tahapan ini.</div>
-                        ) : viewMode === 'TABLE' ? (
-                            <div style={{ background: 'white', borderRadius: '15px', overflow: 'visible', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead style={{ background: '#f8fafc' }}>
-                                        <tr><th style={thP}>Identitas Siswa</th><th style={thP}>Tahap / Posisi</th><th style={thP}>Status Akhir</th><th style={{ ...thP, textAlign: 'center' }}>Aksi</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredStudents.map(s => (
-                                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={tdP}>
-                                                    <div style={{ fontWeight: 800, color: '#1e293b' }}>{s.nama_lengkap}</div>
-                                                    <div style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 700, marginTop: '4px' }}>{s.nama_jepang || '(Nama Jepang Belum Diisi)'}</div>
-                                                </td>
-                                                <td style={tdP}>
-                                                    <span style={{ fontWeight: 700, color: '#64748b', fontSize: '0.85rem' }}>{s.tahap_sekarang}</span>
-                                                    {s.perusahaan_tujuan && ['LAPORAN_LULUS', 'LAPORAN_PERUSAHAAN'].includes(activeMenu) && (
-                                                        <div style={{ fontSize: '0.75rem', color: '#ec4899', marginTop: '4px', fontWeight: 800 }}>📍 {s.perusahaan_tujuan}</div>
-                                                    )}
-                                                </td>
-                                                <td style={tdP}>
-                                                    <span style={tagS(s.status_akhir)}>{s.status_akhir || 'Proses'}</span>
-                                                </td>
-                                                <td style={{ ...tdP, textAlign: 'center', position: 'relative' }}>
-                                                    <button onClick={() => setActiveDropdown(activeDropdown === s.id ? null : s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
-                                                        <MoreVertical size={20} />
-                                                    </button>
-                                                    {activeDropdown === s.id && (
-                                                        <div ref={dropdownRef} style={dropdownContainer}>
-                                                            <button onClick={() => { window.open(`/print-cv/${s.id}`, '_blank'); setActiveDropdown(null); }} style={dropdownItemS}><Eye size={16} /> Preview Rirekisho</button>
-                                                            <button onClick={() => { setSelectedCV(s); setActiveDropdown(null); }} style={dropdownItemS}><FileSignature size={16} /> Edit Data Rirekisho</button>
-                                                            {isProses(s) && <div style={{ borderTop: '1px solid #f1f5f9', margin: '5px 0' }}></div>}
-                                                            {isProses(s) && <button onClick={() => handleNextStage(s.id, s.tahap_sekarang)} style={{ ...dropdownItemS, color: '#059669' }}><ArrowRight size={16} /> Lanjut Tahap</button>}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                                {filteredStudents.map(s => (
-                                    <div key={s.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                                            <div style={{ paddingRight: '10px' }}>
-                                                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', lineHeight: '1.2', marginBottom: '4px' }}>{s.nama_lengkap}</div>
-                                                <div style={{ color: '#059669', fontSize: '0.8rem', fontWeight: 700 }}>{s.nama_jepang || '(Nama Jepang Kosong)'}</div>
-                                            </div>
-                                            <button onClick={() => setActiveDropdown(activeDropdown === s.id ? null : s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px', alignSelf: 'flex-start' }}>
-                                                <MoreVertical size={20} />
-                                            </button>
-
-                                            {activeDropdown === s.id && (
-                                                <div ref={dropdownRef} style={{ ...dropdownContainer, right: '15px', top: '40px' }}>
-                                                    <button onClick={() => { window.open(`/print-cv/${s.id}`, '_blank'); setActiveDropdown(null); }} style={dropdownItemS}><Eye size={16} /> Preview Rirekisho</button>
-                                                    <button onClick={() => { setSelectedCV(s); setActiveDropdown(null); }} style={dropdownItemS}><FileSignature size={16} /> Edit Data Rirekisho</button>
-                                                    {isProses(s) && <div style={{ borderTop: '1px solid #f1f5f9', margin: '5px 0' }}></div>}
-                                                    {isProses(s) && <button onClick={() => handleNextStage(s.id, s.tahap_sekarang)} style={{ ...dropdownItemS, color: '#059669' }}><ArrowRight size={16} /> Lanjut Tahap</button>}
-                                                </div>
-                                            )}
+                                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
+                                            <input type="text" placeholder="Cari Perusahaan..." onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px', fontSize: '0.9rem' }} />
                                         </div>
-                                        <div style={{ flex: 1, marginBottom: '20px' }}>
-                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Tahap Saat Ini</div>
-                                            <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.95rem' }}>{s.tahap_sekarang}</div>
-                                            {s.perusahaan_tujuan && (
-                                                <div style={{ fontSize: '0.8rem', color: '#ec4899', marginTop: '6px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <Building2 size={14} /> {s.perusahaan_tujuan}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>ID: {s.id.substring(0, 6)}...</span>
-                                            <span style={tagS(s.status_akhir)}>{s.status_akhir || 'Proses'}</span>
+                                        <button onClick={() => {
+                                            setNewJobOrder({ job_id: `JO-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)}`, perusahaan: '', bidang: '', kumiai: '', kuota: 0, terisi: 0, status: 'AKTIF', catatan: '' });
+                                            setIsJobOrderModalOpen(true);
+                                        }} style={{ background: brandNavy, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Plus size={18} /> Tambah Job
+                                        </button>
+                                        <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+                                            <button onClick={() => setViewMode('CARD')} style={viewBtnS(viewMode === 'CARD')} title="Bentuk Card"><LayoutGrid size={18} /></button>
+                                            <button onClick={() => setViewMode('TABLE')} style={viewBtnS(viewMode === 'TABLE')} title="Bentuk Label"><List size={18} /></button>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                                </header>
 
-                {/* ── JOB ORDER (KAISHA) ── */}
-                {activeMenu === 'JOB_ORDER' && (
-                    <div className="fade-in">
-                        <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 5px 0' }}>Job Order (Kaisha)</h1>
-                                <p style={{ color: '#64748b', margin: 0 }}>Daftar permintaan tenaga kerja dari perusahaan Jepang.</p>
-                            </div>
+                                {filteredJO.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8', background: 'white', borderRadius: '15px' }}>Tidak ada Job Order yang ditemukan. Silakan tambah data baru.</div>
+                                ) : viewMode === 'TABLE' ? (
+                                    <div style={{ background: 'white', borderRadius: '15px', overflow: 'visible', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead style={{ background: '#f8fafc' }}>
+                                                <tr><th style={thP}>ID & Perusahaan</th><th style={thP}>Bidang</th><th style={thP}>Progress Kuota</th><th style={thP}>Status</th><th style={{ ...thP, textAlign: 'center' }}>Aksi</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredJO.map(jo => {
+                                                    const pct = jo.kuota > 0 ? (jo.terisi / jo.kuota) * 100 : 0;
+                                                    const statusAtas = cleanStr(jo.status).toUpperCase();
+                                                    const isBlinking = !['SELESAI', 'CANCEL', 'PENUH'].includes(statusAtas);
 
-                            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                                <div style={{ position: 'relative' }}>
-                                    <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
-                                    <input type="text" placeholder="Cari Perusahaan..." onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '12px 15px 12px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px', fontSize: '0.9rem' }} />
-                                </div>
-                                <button onClick={() => setIsJobOrderModalOpen(true)} style={{ background: brandNavy, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Plus size={18} /> Tambah Job
-                                </button>
-                                <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
-                                    <button onClick={() => setViewMode('CARD')} style={viewBtnS(viewMode === 'CARD')} title="Bentuk Card"><LayoutGrid size={18} /></button>
-                                    <button onClick={() => setViewMode('TABLE')} style={viewBtnS(viewMode === 'TABLE')} title="Bentuk Label"><List size={18} /></button>
-                                </div>
-                            </div>
-                        </header>
-
-                        {filteredJO.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8', background: 'white', borderRadius: '15px' }}>Tidak ada Job Order yang ditemukan. Silakan tambah data baru.</div>
-                        ) : viewMode === 'TABLE' ? (
-                            <div style={{ background: 'white', borderRadius: '15px', overflow: 'visible', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead style={{ background: '#f8fafc' }}>
-                                        <tr><th style={thP}>ID & Perusahaan</th><th style={thP}>Bidang</th><th style={thP}>Progress Kuota</th><th style={thP}>Status</th><th style={{ ...thP, textAlign: 'center' }}>Aksi</th></tr>
-                                    </thead>
-                                    <tbody>
+                                                    return (
+                                                        <tr key={jo.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                            <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}>
+                                                                <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color={brandNavy} /> {jo.perusahaan}</div>
+                                                                <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '4px' }}>{jo.job_id}</div>
+                                                            </td>
+                                                            <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}><div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#1e293b', fontWeight: 600, fontSize: '0.85rem' }}><Briefcase size={14} color="#94a3b8" /> {jo.bidang}</div></td>
+                                                            <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div style={{ flex: 1, background: '#e2e8f0', height: '8px', borderRadius: '4px', overflow: 'hidden' }}><div style={{ width: `${pct}%`, background: pct >= 100 ? '#ef4444' : '#10b981', height: '100%' }}></div></div><span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', width: '40px' }}>{jo.terisi}/{jo.kuota}</span></div></td>
+                                                            <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}>
+                                                                <span className={isBlinking ? 'status-blink' : ''} style={tagS(jo.status)}>{jo.status}</span>
+                                                            </td>
+                                                            <td style={{ ...tdP, textAlign: 'center', position: 'relative' }}>
+                                                                <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === jo.id ? null : jo.id); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
+                                                                    <MoreVertical size={20} />
+                                                                </button>
+                                                                {activeDropdown === jo.id && (
+                                                                    <div ref={dropdownRef} style={dropdownContainer}>
+                                                                        <button onClick={(e) => { e.stopPropagation(); window.open(`/print-laporan-kaisha/${jo.id}`, '_blank'); setActiveDropdown(null); }} style={{ ...dropdownItemS, color: brandNavy }}><FileText size={16} /> Cetak Laporan</button>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteJobOrder(jo.id, jo.perusahaan); }} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={16} /> Hapus Job Order</button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
                                         {filteredJO.map(jo => {
                                             const pct = jo.kuota > 0 ? (jo.terisi / jo.kuota) * 100 : 0;
                                             const statusAtas = cleanStr(jo.status).toUpperCase();
                                             const isBlinking = !['SELESAI', 'CANCEL', 'PENUH'].includes(statusAtas);
 
                                             return (
-                                                <tr key={jo.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                                    <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}>
-                                                        <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color={brandNavy} /> {jo.perusahaan}</div>
-                                                        <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '4px' }}>{jo.job_id}</div>
-                                                    </td>
-                                                    <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}><div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#1e293b', fontWeight: 600, fontSize: '0.85rem' }}><Briefcase size={14} color="#94a3b8" /> {jo.bidang}</div></td>
-                                                    <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div style={{ flex: 1, background: '#e2e8f0', height: '8px', borderRadius: '4px', overflow: 'hidden' }}><div style={{ width: `${pct}%`, background: pct >= 100 ? '#ef4444' : '#10b981', height: '100%' }}></div></div><span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', width: '40px' }}>{jo.terisi}/{jo.kuota}</span></div></td>
-                                                    <td style={{ ...tdP, cursor: 'pointer' }} onClick={() => setActiveJobOrder(jo)}>
-                                                        <span className={isBlinking ? 'status-blink' : ''} style={tagS(jo.status)}>{jo.status}</span>
-                                                    </td>
-                                                    <td style={{ ...tdP, textAlign: 'center', position: 'relative' }}>
-                                                        <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === jo.id ? null : jo.id); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '5px' }}>
+                                                <div key={jo.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', transition: 'transform 0.2s', display: 'flex', flexDirection: 'column', position: 'relative' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                                                        <div onClick={() => setActiveJobOrder(jo)} style={{ cursor: 'pointer', flex: 1 }}>
+                                                            <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem', marginBottom: '4px' }}>{jo.perusahaan}</div>
+                                                            <div style={{ color: '#64748b', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}><Briefcase size={12} /> {jo.bidang}</div>
+                                                        </div>
+                                                        <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === jo.id ? null : jo.id); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}>
                                                             <MoreVertical size={20} />
                                                         </button>
+
                                                         {activeDropdown === jo.id && (
-                                                            <div ref={dropdownRef} style={dropdownContainer}>
+                                                            <div ref={dropdownRef} style={{ ...dropdownContainer, right: '15px', top: '40px' }}>
+                                                                <button onClick={(e) => { e.stopPropagation(); window.open(`/print-laporan-kaisha/${jo.id}`, '_blank'); setActiveDropdown(null); }} style={{ ...dropdownItemS, color: brandNavy }}><FileText size={16} /> Cetak Laporan</button>
                                                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteJobOrder(jo.id, jo.perusahaan); }} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={16} /> Hapus Job Order</button>
                                                             </div>
                                                         )}
-                                                    </td>
-                                                </tr>
+                                                    </div>
+
+                                                    <div onClick={() => setActiveJobOrder(jo)} style={{ marginTop: 'auto', paddingTop: '15px', borderTop: '1px solid #f1f5f9', cursor: 'pointer' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                                            <span className={isBlinking ? 'status-blink' : ''} style={tagS(jo.status)}>{jo.status}</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '5px' }}>
+                                                            <span>Progress Kuota</span>
+                                                            <span>{jo.terisi} / {jo.kuota} Peserta</span>
+                                                        </div>
+                                                        <div style={{ width: '100%', background: '#e2e8f0', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                                                            <div style={{ width: `${pct}%`, background: pct >= 100 ? '#ef4444' : '#10b981', height: '100%' }}></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             )
                                         })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                                {filteredJO.map(jo => {
-                                    const pct = jo.kuota > 0 ? (jo.terisi / jo.kuota) * 100 : 0;
-                                    const statusAtas = cleanStr(jo.status).toUpperCase();
-                                    const isBlinking = !['SELESAI', 'CANCEL', 'PENUH'].includes(statusAtas);
-
-                                    return (
-                                        <div key={jo.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', transition: 'transform 0.2s', display: 'flex', flexDirection: 'column', position: 'relative' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                                                <div onClick={() => setActiveJobOrder(jo)} style={{ cursor: 'pointer', flex: 1 }}>
-                                                    <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem', marginBottom: '4px' }}>{jo.perusahaan}</div>
-                                                    <div style={{ color: '#64748b', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}><Briefcase size={12} /> {jo.bidang}</div>
-                                                </div>
-                                                <button onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === jo.id ? null : jo.id); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}>
-                                                    <MoreVertical size={20} />
-                                                </button>
-
-                                                {activeDropdown === jo.id && (
-                                                    <div ref={dropdownRef} style={{ ...dropdownContainer, right: '15px', top: '40px' }}>
-                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteJobOrder(jo.id, jo.perusahaan); }} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={16} /> Hapus Job Order</button>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div onClick={() => setActiveJobOrder(jo)} style={{ marginTop: 'auto', paddingTop: '15px', borderTop: '1px solid #f1f5f9', cursor: 'pointer' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                    <span className={isBlinking ? 'status-blink' : ''} style={tagS(jo.status)}>{jo.status}</span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '5px' }}>
-                                                    <span>Progress Kuota</span>
-                                                    <span>{jo.terisi} / {jo.kuota} Peserta</span>
-                                                </div>
-                                                <div style={{ width: '100%', background: '#e2e8f0', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
-                                                    <div style={{ width: `${pct}%`, background: pct >= 100 ? '#ef4444' : '#10b981', height: '100%' }}></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
+                                    </div>
+                                )}
                             </div>
                         )}
-                    </div>
+                    </>
                 )}
             </main>
 
@@ -722,50 +757,77 @@ export default function DashboardSupervisor() {
             {/* MODAL EDIT CV */}
             <EditProfileModal selectedCV={selectedCV} setSelectedCV={setSelectedCV} handleSaveCV={handleSaveCV} />
 
-            {/* MODAL TAMBAH JOB ORDER */}
+            {/* ── MODAL TAMBAH JOB ORDER DENGAN DROPDOWN (PREMIUM UI) ── */}
             {isJobOrderModalOpen && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-                    <form onSubmit={handleAddJobOrder} style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#1e293b' }}>Tambah Job Order Baru</h2>
-                            <button type="button" onClick={() => setIsJobOrderModalOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', padding: '5px', cursor: 'pointer' }}><X size={18} /></button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
+                    <form onSubmit={handleAddJobOrder} style={{ background: 'white', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', width: '650px', padding: 0 }}>
+                        <div style={{ background: brandNavy, padding: '20px 25px', borderTopLeftRadius: '15px', borderTopRightRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
+                                <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'white', fontWeight: 900 }}>Tambah Job Order Baru</h2>
+                                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#cbd5e1' }}>Publikasikan kebutuhan tenaga kerja Kaisha</p>
+                            </div>
+                            <button type="button" onClick={() => setIsJobOrderModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={22} /></button>
+                        </div>
+                        
+                        <div style={{ padding: '25px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                            <div style={{ gridColumn: '1 / -1' }}>
                                 <label style={labelForm}>ID Job Order</label>
-                                <input style={inputForm} required placeholder="Contoh: JO-2026-01" value={newJobOrder.job_id} onChange={(e) => setNewJobOrder({ ...newJobOrder, job_id: e.target.value })} />
+                                <input style={inputForm} required value={newJobOrder.job_id} onChange={(e) => setNewJobOrder({ ...newJobOrder, job_id: e.target.value })} />
                             </div>
+                            
                             <div>
-                                <label style={labelForm}>Nama Perusahaan</label>
-                                <input style={inputForm} required placeholder="Contoh: AGRI FRONTIER FUKUDA" value={newJobOrder.perusahaan} onChange={(e) => setNewJobOrder({ ...newJobOrder, perusahaan: e.target.value })} />
+                                <label style={labelForm}>Nama Perusahaan (Kaisha) *</label>
+                                <input style={inputForm} required placeholder="Contoh: TOYOTA CORP" value={newJobOrder.perusahaan} onChange={(e) => setNewJobOrder({ ...newJobOrder, perusahaan: e.target.value })} />
                             </div>
+                            
+                            {/* ANTI GAGAL DROPDOWN BIDANG */}
                             <div>
-                                <label style={labelForm}>Bidang / Jenis Job</label>
-                                <input style={inputForm} required placeholder="Contoh: PERTANIAN" value={newJobOrder.bidang} onChange={(e) => setNewJobOrder({ ...newJobOrder, bidang: e.target.value })} />
+                                <label style={labelForm}>Bidang / Jenis Job *</label>
+                                <select style={inputForm} required value={newJobOrder.bidang} onChange={(e) => setNewJobOrder({ ...newJobOrder, bidang: e.target.value })}>
+                                    <option value="">-- Pilih Bidang --</option>
+                                    {masterBidang.map((b, idx) => {
+                                        const namaVal = b.nama_bidang || b.bidang || b.nama || b.name || Object.values(b)[1];
+                                        return <option key={`bidang-${idx}`} value={namaVal}>{namaVal}</option>;
+                                    })}
+                                </select>
                             </div>
+
+                            {/* ANTI GAGAL DROPDOWN KUMIAI */}
                             <div>
-                                <label style={labelForm}>Nama Kumiai</label>
-                                <input style={inputForm} required placeholder="Nama pihak Kumiai" value={newJobOrder.kumiai} onChange={(e) => setNewJobOrder({ ...newJobOrder, kumiai: e.target.value })} />
+                                <label style={labelForm}>Nama Kumiai (Pengawas) *</label>
+                                <select style={inputForm} required value={newJobOrder.kumiai} onChange={(e) => setNewJobOrder({ ...newJobOrder, kumiai: e.target.value })}>
+                                    <option value="">-- Pilih Kumiai --</option>
+                                    {masterKumiai.map((k, idx) => {
+                                        const namaVal = k.nama_kumiai || k.kumiai || k.nama || k.name || Object.values(k)[1];
+                                        return <option key={`kumiai-${idx}`} value={namaVal}>{namaVal}</option>;
+                                    })}
+                                </select>
                             </div>
-                            <div style={{ display: 'flex', gap: '15px' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={labelForm}>Kuota Dibutuhkan</label>
-                                    <input style={inputForm} type="number" required min="1" value={newJobOrder.kuota} onChange={(e) => setNewJobOrder({ ...newJobOrder, kuota: parseInt(e.target.value) })} />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={labelForm}>Status</label>
-                                    <select style={inputForm} value={newJobOrder.status} onChange={(e) => setNewJobOrder({ ...newJobOrder, status: e.target.value })}>
-                                        <option value="AKTIF">AKTIF (Recruiting)</option>
-                                        <option value="PENUH">PENUH (Full)</option>
-                                    </select>
-                                </div>
+
+                            <div>
+                                <label style={{...labelForm, color: '#ec4899'}}>Kuota Dibutuhkan *</label>
+                                <input style={{...inputForm, fontSize: '1.2rem', fontWeight: 800, border: '2px solid #fbcfe8', color: '#be185d'}} type="number" required min="1" value={newJobOrder.kuota} onChange={(e) => setNewJobOrder({ ...newJobOrder, kuota: parseInt(e.target.value) })} />
+                            </div>
+
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={labelForm}>Status Job Order</label>
+                                <select style={{...inputForm, background: '#f8fafc'}} value={newJobOrder.status} onChange={(e) => setNewJobOrder({ ...newJobOrder, status: e.target.value })}>
+                                    <option value="AKTIF">AKTIF (Recruiting)</option>
+                                    <option value="PENUH">PENUH (Full)</option>
+                                </select>
+                            </div>
+
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={labelForm}>Catatan / Persyaratan (Opsional)</label>
+                                <textarea style={{...inputForm, resize: 'vertical'}} rows="2" value={newJobOrder.catatan} onChange={(e) => setNewJobOrder({ ...newJobOrder, catatan: e.target.value })} placeholder="Cth: Butuh Laki-laki usia maks 25th..."></textarea>
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                            <button type="button" onClick={() => setIsJobOrderModalOpen(false)} style={{ padding: '10px 20px', background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Batal</button>
-                            <button type="submit" style={{ padding: '10px 20px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Simpan Job Order</button>
+                        <div style={{ padding: '20px 25px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', borderBottomLeftRadius: '15px', borderBottomRightRadius: '15px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button type="button" onClick={() => setIsJobOrderModalOpen(false)} style={{ padding: '12px 20px', background: 'white', border: '1px solid #cbd5e1', color: '#64748b', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>Batal</button>
+                            <button type="submit" disabled={isSubmittingJO} style={{ padding: '12px 25px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', cursor: isSubmittingJO ? 'not-allowed' : 'pointer', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {isSubmittingJO ? <Loader2 size={18} className="animate-spin" /> : <><Save size={18} /> Publikasi Job Order</>}
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -775,25 +837,20 @@ export default function DashboardSupervisor() {
 }
 
 // ── STYLE OBJECTS ──
-
 const menuS = (isActive) => ({ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 18px', background: isActive ? 'rgba(255, 255, 255, 0.1)' : 'transparent', color: isActive ? brandYellow : 'rgba(255, 255, 255, 0.7)', border: 'none', borderRadius: '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 700, fontSize: '0.85rem', transition: '0.3s' });
 const menuDropdownBtn = (isOpen) => ({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', background: isOpen ? 'rgba(255, 255, 255, 0.1)' : 'transparent', color: isOpen ? 'white' : 'rgba(255, 255, 255, 0.7)', border: 'none', borderRadius: isOpen ? '10px 10px 0 0' : '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 700, fontSize: '0.85rem', transition: '0.3s' });
 const subMenuContainer = (isOpen) => ({ maxHeight: isOpen ? '300px' : '0px', overflow: 'hidden', transition: 'max-height 0.3s ease-in-out', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '0 0 10px 10px', marginTop: '-5px', paddingBottom: isOpen ? '10px' : '0' });
 const subMenuS = (isActive) => ({ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 18px 10px 40px', background: 'transparent', color: isActive ? brandYellow : 'rgba(255, 255, 255, 0.6)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 600, fontSize: '0.8rem', transition: '0.2s' });
 const subDot = (isActive) => ({ width: '6px', height: '6px', borderRadius: '50%', background: isActive ? brandYellow : 'rgba(255, 255, 255, 0.4)', transition: '0.2s' });
-
 const smallKanjiList = { color: '#cbd5e1', fontSize: '0.65rem', fontWeight: 800, marginLeft: 'auto' };
-
-const labelForm = { display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '5px', textTransform: 'uppercase' };
-const inputForm = { width: '100%', padding: '10px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem', color: '#1e293b', background: '#f8fafc' };
-
+const labelForm = { display: 'block', fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const inputForm = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem', color: '#1e293b', background: '#f8fafc', transition: 'border-color 0.2s' };
 const tabS = (active) => ({ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: active ? brandNavy : 'transparent', fontWeight: 700, color: active ? 'white' : '#64748b', fontSize: '0.8rem', transition: '0.2s' });
 const viewBtnS = (active) => ({ padding: '6px 10px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: active ? 'white' : 'transparent', color: active ? brandNavy : '#94a3b8', transition: '0.2s', boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' });
 const thP = { padding: '18px 25px', textAlign: 'left', fontSize: '0.7rem', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '1px', fontWeight: 800 };
 const tdP = { padding: '18px 25px', verticalAlign: 'middle' };
 const dropdownContainer = { position: 'absolute', right: '40px', top: '50%', transform: 'translateY(-50%)', background: 'white', borderRadius: '8px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0', width: '180px', zIndex: 50, padding: '5px', textAlign: 'left' };
 const dropdownItemS = { width: '100%', padding: '10px 15px', display: 'flex', alignItems: 'center', gap: '10px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem', fontWeight: 600, color: '#1e293b', borderRadius: '6px', transition: 'background 0.2s' };
-
 const tagS = (st) => {
     const s = cleanStr(st).toUpperCase();
     let bg = '#fef3c7', col = '#92400e';

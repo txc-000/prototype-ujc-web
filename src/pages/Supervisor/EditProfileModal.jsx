@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export default function EditProfileModal({ selectedCV, setSelectedCV, handleSaveCV }) {
     // ── STATE ARRAY DINAMIS ──
@@ -7,9 +8,19 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
     const [kerjaList, setKerjaList] = useState([]);
     const [keluargaList, setKeluargaList] = useState([]);
     const [fileList, setFileList] = useState([]);
+    
+    // ── STATE MASTER BIDANG ──
+    const [masterBidang, setMasterBidang] = useState([]);
 
     // ── LOAD DATA KE DALAM STATE ──
     useEffect(() => {
+        // Ambil Master Bidang untuk Dropdown
+        const fetchBidang = async () => {
+            const { data } = await supabase.from('master_bidang').select('nama_bidang').order('nama_bidang', { ascending: true });
+            if (data) setMasterBidang(data);
+        };
+        fetchBidang();
+
         if (selectedCV) {
             const safeParse = (data) => {
                 if (!data) return [];
@@ -31,7 +42,7 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
     // ── HANDLERS: TAMBAH DATA BARU ──
     const addPendidikan = () => setPendidikanList([...pendidikanList, { jenjang: '', nama_sekolah: '', jurusan: '', bln_awal: '', thn_awal: '', bln_akhir: '', thn_akhir: '' }]);
     const addKerja = () => setKerjaList([...kerjaList, { nama_perusahaan: '', jenis_pekerjaan: '', bln_awal: '', thn_awal: '', bln_akhir: '', thn_akhir: '' }]);
-    const addKeluarga = () => setKeluargaList([...keluargaList, { nama: '', alamat: '', no_hp: '', pendapatan: '', hubungan: '', tipe: 'DARURAT' }]);
+    const addKeluarga = () => setKeluargaList([...keluargaList, { hubungan: '', nama: '', pendapatan: '', umur: '', lokasi: 'INDONESIA' }]);
     const addFile = () => setFileList([...fileList, { name: '', url: '', type: 'DOKUMEN', notes: '' }]); 
 
     // ── HANDLERS: UPDATE DATA ARRAY ──
@@ -93,6 +104,18 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                         </select>
                     </div>
 
+                    {/* ── FIELD BARU: MINAT BIDANG (SOLUSI UNTUK ANAK SMA) ── */}
+                    <div style={{...col, gridColumn: '1 / -1'}}>
+                        <label style={{...lb, color: '#10b981'}}>🎯 Minat Bidang (Tujuan Job Kaisha)</label>
+                        <select style={{...inp, border: '2px solid #10b981', background: '#ecfdf5'}} value={selectedCV.minat_bidang || ''} onChange={e => setSelectedCV({...selectedCV, minat_bidang: e.target.value})}>
+                            <option value="">-- Pilih Minat Bidang Pekerjaan --</option>
+                            {masterBidang.map(b => (
+                                <option key={b.nama_bidang} value={b.nama_bidang}>{b.nama_bidang}</option>
+                            ))}
+                        </select>
+                        <small style={{color: '#64748b', fontSize: '0.7rem'}}>* Pilih ini agar lulusan SMA tetap bisa dijodohkan dengan Job Order tertentu.</small>
+                    </div>
+
                     <div style={col}><label style={lb}>Tempat Lahir</label><input style={inp} value={selectedCV.tempat_lahir || ''} onChange={e => setSelectedCV({...selectedCV, tempat_lahir: e.target.value})} /></div>
                     <div style={col}><label style={lb}>Tanggal Lahir</label><input type="date" style={inp} value={selectedCV.tanggal_lahir || ''} onChange={e => setSelectedCV({...selectedCV, tanggal_lahir: e.target.value})} /></div>
                     
@@ -107,7 +130,7 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                             <option value="Konghucu">Konghucu</option>
                         </select>
                     </div>
-                    <div style={col}><label style={lb}>No. HP Pribadi</label><input style={inp} value={selectedCV.no_telp || ''} onChange={e => setSelectedCV({...selectedCV, no_telp: e.target.value})} /></div>
+                    <div style={col}><label style={lb}>No. HP Pribadi</label><input style={inp} value={selectedCV.telepon || ''} onChange={e => setSelectedCV({...selectedCV, telepon: e.target.value})} /></div>
                     
                     <div style={{...col, gridColumn: '1 / -1'}}><label style={lb}>Alamat Lengkap</label><textarea style={{...inp, height: '60px', resize: 'none'}} value={selectedCV.alamat || ''} onChange={e => setSelectedCV({...selectedCV, alamat: e.target.value})} /></div>
                 </div>
@@ -174,7 +197,7 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                     <div style={{...col, gridColumn: '1 / -1'}}><label style={lb}>Target Menabung (Rp / Yen)</label><input style={inp} value={selectedCV.target_menabung || ''} onChange={e => setSelectedCV({...selectedCV, target_menabung: e.target.value})} /></div>
                 </div>
 
-                {/* ── ARRAY: PENDIDIKAN ── */}
+                {/* ── ARRAY: PENDIDIKAN (KOLOM JURUSAN DIKEMBALIKAN) ── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                     <h4 style={{...sectionTitle, borderBottom: 'none', margin: 0}}>Riwayat Pendidikan</h4>
                     <button type="button" onClick={addPendidikan} style={btnAdd}><Plus size={16}/> Tambah Pendidikan</button>
@@ -182,13 +205,17 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '35px' }}>
                     {pendidikanList.map((item, index) => (
                         <div key={index} style={cardArray}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: '15px', alignItems: 'end' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1.5fr 1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                                 <div style={col}><label style={lb}>Jenjang</label>
                                     <select style={inpSm} value={item.jenjang} onChange={e => updatePendidikan(index, 'jenjang', e.target.value)}>
                                         <option value="">Pilih...</option><option value="SD">SD (小学校)</option><option value="SMP">SMP (中学校)</option><option value="SMA">SMA (高校)</option><option value="SMK">SMK (専門高校)</option><option value="D3">D3 (準学士)</option><option value="S1">S1 (大学)</option>
                                     </select>
                                 </div>
                                 <div style={col}><label style={lb}>Nama Sekolah</label><input style={inpSm} value={item.nama_sekolah} onChange={e => updatePendidikan(index, 'nama_sekolah', e.target.value)} /></div>
+                                
+                                {/* ── KOLOM JURUSAN DI SINI ── */}
+                                <div style={col}><label style={lb}>Jurusan (IPA/IPS/Dll)</label><input style={inpSm} value={item.jurusan} onChange={e => updatePendidikan(index, 'jurusan', e.target.value)} /></div>
+
                                 <div style={col}><label style={lb}>Masuk (Bln/Thn)</label>
                                     <div style={{display:'flex', gap:'5px'}}><input style={inpSm} placeholder="Bln" value={item.bln_awal} onChange={e => updatePendidikan(index, 'bln_awal', e.target.value)} /><input style={inpSm} placeholder="Thn" value={item.thn_awal} onChange={e => updatePendidikan(index, 'thn_awal', e.target.value)} /></div>
                                 </div>
@@ -234,21 +261,18 @@ export default function EditProfileModal({ selectedCV, setSelectedCV, handleSave
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '35px' }}>
                     {keluargaList.map((item, index) => (
                         <div key={index} style={cardArray}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 1fr 1fr auto', gap: '15px', alignItems: 'end', marginBottom: '10px' }}>
-                                <div style={col}><label style={lb}>Kategori Kontak</label>
-                                    <select style={inpSm} value={item.tipe} onChange={e => updateKeluarga(index, 'tipe', e.target.value)}>
-                                        <option value="DARURAT">Darurat (Di-hubungi)</option><option value="INDONESIA">Keluarga Indonesia</option><option value="JEPANG">Keluarga di Jepang</option>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 2fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+                                <div style={col}><label style={lb}>Hubungan</label><input style={inpSm} placeholder="Ayah/Ibu" value={item.hubungan} onChange={e => updateKeluarga(index, 'hubungan', e.target.value)} /></div>
+                                <div style={col}><label style={lb}>Nama Anggota</label><input style={inpSm} value={item.nama} onChange={e => updateKeluarga(index, 'nama', e.target.value)} /></div>
+                                <div style={col}><label style={lb}>Umur</label><input style={inpSm} value={item.umur} onChange={e => updateKeluarga(index, 'umur', e.target.value)} /></div>
+                                <div style={col}><label style={lb}>Pekerjaan / Pendapatan</label><input style={inpSm} placeholder="Petani / 2500000" value={item.pendapatan} onChange={e => updateKeluarga(index, 'pendapatan', e.target.value)} /></div>
+                                <div style={col}><label style={lb}>Lokasi</label>
+                                    <select style={inpSm} value={item.lokasi || 'INDONESIA'} onChange={e => updateKeluarga(index, 'lokasi', e.target.value)}>
+                                        <option value="INDONESIA">Di Indonesia</option>
+                                        <option value="JEPANG">Di Jepang</option>
                                     </select>
                                 </div>
-                                <div style={col}><label style={lb}>Nama Anggota</label><input style={inpSm} value={item.nama} onChange={e => updateKeluarga(index, 'nama', e.target.value)} /></div>
-                                <div style={col}><label style={lb}>Hubungan</label><input style={inpSm} placeholder="Ayah/Istri" value={item.hubungan} onChange={e => updateKeluarga(index, 'hubungan', e.target.value)} /></div>
-                                <div style={col}><label style={lb}>No HP / Telp</label><input style={inpSm} value={item.no_hp} onChange={e => updateKeluarga(index, 'no_hp', e.target.value)} /></div>
                                 <button type="button" onClick={() => removeKeluarga(index)} style={btnDel}><Trash2 size={18}/></button>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
-                                <div style={col}><label style={lb}>Alamat Lengkap (Kosongkan jika sama)</label><input style={inpSm} value={item.alamat} onChange={e => updateKeluarga(index, 'alamat', e.target.value)} /></div>
-                                {/* PERUBAHAN LABEL DAN PLACEHOLDER DI SINI */}
-                                <div style={col}><label style={lb}>Pekerjaan / Penghasilan (Rp)</label><input style={inpSm} type="text" placeholder="Contoh: Petani / 2500000" value={item.pendapatan} onChange={e => updateKeluarga(index, 'pendapatan', e.target.value)} /></div>
                             </div>
                         </div>
                     ))}
