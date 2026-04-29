@@ -3,13 +3,12 @@ import { supabase } from '../../lib/supabase';
 import { 
     Wallet, Building2, Search, Loader2, UserCircle, Plus, X, Award, 
     Receipt, AlertOctagon, PlaneTakeoff, ShieldAlert, ArrowDownCircle, 
-    ArrowUpCircle, FileText, CheckCircle2, Clock, XCircle, BellRing
+    ArrowUpCircle, FileText, CheckCircle2, Clock, XCircle, BellRing, Layers
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const brandNavy = '#101869';
 
-// ── MCU DIHAPUS: Sisa Pendidikan Reguler & Diklat ──
 const PAYMENT_STAGES = [
     { id: 'TAHAP_3', label: 'Pendidikan Reguler', amount: 5000000, isCicilan: true },
     { id: 'TAHAP_5', label: 'Pendidikan Diklat', amount: 33000000, isCicilan: true }
@@ -26,7 +25,7 @@ const SATUAN_WAKTU = ['Bulan', 'Minggu', 'Hari', 'Lumpsum'];
 
 export default function DashboardAdministrasi() {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('PRIORITAS'); 
+    const [activeTab, setActiveTab] = useState('DASHBOARD'); 
     const [students, setStudents] = useState([]);
     const [alumniData, setAlumniData] = useState([]);
     const [invoices, setInvoices] = useState([]);
@@ -41,10 +40,11 @@ export default function DashboardAdministrasi() {
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [payForm, setPayForm] = useState({ kategori: '', nominal: '', metode_pembayaran: 'TRANSFER', keterangan: '' });
 
-    const currentYm = new Date().toISOString().slice(0, 7);
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-    const [invoiceForm, setInvoiceForm] = useState({ kumiai: '', startMonth: currentYm, opsi_pembayaran: 'SESUAI_PERJANJIAN' });
+    const [invoiceForm, setInvoiceForm] = useState({ kumiai: '', periodeMulai: '', periodeSelesai: '', opsi_pembayaran: 'SESUAI_PERJANJIAN' });
     const [invoiceDraft, setInvoiceDraft] = useState([]); 
+    const [filterPerusahaan, setFilterPerusahaan] = useState('');
+    const [filterSiswa, setFilterSiswa] = useState('');
     
     const [isCashModalOpen, setIsCashModalOpen] = useState(false);
     const [cashForm, setCashForm] = useState({ tipe: 'KELUAR', kategori: 'Operasional', keterangan: '', nominal: '' });
@@ -70,20 +70,37 @@ export default function DashboardAdministrasi() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
+            // Menggunakan kueri asli Tuan agar bebas 400 Bad Request
             const { data: stdData } = await supabase.from('students').select('id, nik, nama_lengkap, tahap_sekarang, total_bayar, status_pembayaran, telepon').neq('tahap_sekarang', 'SIAP BERANGKAT').order('created_at', { ascending: false });
             const { data: payData } = await supabase.from('student_payments').select('student_id, nominal');
             
-            const combinedData = stdData?.map(std => {
+            const combinedData = (stdData || []).map(std => {
                 const totalTerbayar = payData?.filter(p => p.student_id === std.id).reduce((sum, p) => sum + Number(p.nominal), 0) || 0;
-                // Target tagihan diubah menjadi 38 juta (5jt + 33jt) karena MCU dihapus
                 const targetTagihan = std.total_bayar > 0 ? std.total_bayar : 38000000;
                 const sisaTagihan = targetTagihan - totalTerbayar;
                 return { ...std, total_bayar: targetTagihan, total_terbayar: totalTerbayar, sisa_tagihan: sisaTagihan > 0 ? sisaTagihan : 0 };
-            }) || [];
+            });
             setStudents(combinedData);
 
             const { data: alumData } = await supabase.from('students').select('id, nama_lengkap, perusahaan_tujuan, status_alumni, updated_at').eq('tahap_sekarang', 'SIAP BERANGKAT').order('nama_lengkap', { ascending: true });
-            setAlumniData(alumData || []);
+            
+            // PELACAKAN KUMIAI AMAN: Menggunakan kamus dari job_orders asli Tuan
+            const { data: jobOrdersData } = await supabase.from('job_orders').select('kumiai, perusahaan');
+            const companyMap = {};
+            if (jobOrdersData) {
+                jobOrdersData.forEach(job => {
+                    if (job.perusahaan && job.kumiai) {
+                        companyMap[job.perusahaan.toLowerCase().trim()] = job.kumiai;
+                    }
+                });
+            }
+
+            const mappedAlumni = (alumData || []).map(s => {
+                const pt = s.perusahaan_tujuan ? s.perusahaan_tujuan.trim() : '';
+                const inferredKumiai = pt ? companyMap[pt.toLowerCase()] : null;
+                return { ...s, kumiai_inferred: inferredKumiai };
+            });
+            setAlumniData(mappedAlumni);
 
             const { data: invData } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
             setInvoices(invData || []);
@@ -163,16 +180,18 @@ export default function DashboardAdministrasi() {
 
     const handleSelectKumiaiForInvoice = async (kumiaiName) => {
         setInvoiceForm(prev => ({ ...prev, kumiai: kumiaiName }));
+        setFilterPerusahaan('');
+        setFilterSiswa('');
         if (!kumiaiName) { setInvoiceDraft([]); return; }
         
         setIsLoading(true);
         try {
             const { data: jobOrders } = await supabase.from('job_orders').select('perusahaan').ilike('kumiai', `%${kumiaiName}%`);
-            const companies = jobOrders ? jobOrders.map(j => j.perusahaan.toLowerCase().trim()) : [];
+            const companies = jobOrders ? jobOrders.map(j => j.perusahaan?.toLowerCase().trim()).filter(Boolean) : [];
 
             if (companies.length === 0) { setInvoiceDraft([]); return; }
 
-            const { data: rawStudents } = await supabase.from('students').select('id, nama_lengkap, perusahaan_tujuan, status_alumni, foto').eq('tahap_sekarang', 'SIAP BERANGKAT');
+            const { data: rawStudents } = await supabase.from('students').select('id, nama_lengkap, perusahaan_tujuan, status_alumni').eq('tahap_sekarang', 'SIAP BERANGKAT');
             
             const activeAlumni = (rawStudents || []).filter(s => {
                 const isAktif = !s.status_alumni || s.status_alumni === 'AKTIF';
@@ -184,32 +203,54 @@ export default function DashboardAdministrasi() {
                 student_id: s.id,
                 nama_lengkap: s.nama_lengkap,
                 perusahaan: s.perusahaan_tujuan.trim(),
-                foto: s.foto || null,
+                foto: null,
                 nominal: 5000, 
                 kuantitas: 1,
                 satuan: 'Bulan'
             })).sort((a, b) => a.perusahaan.localeCompare(b.perusahaan));
             
             setInvoiceDraft(draft);
-        } catch (err) { console.error(err); } finally { setIsLoading(false); }
+        } catch (err) { console.error("Selection Error:", err.message); } finally { setIsLoading(false); }
     };
 
-    const updateDraftItem = (index, field, value) => {
-        const newDraft = [...invoiceDraft];
-        newDraft[index][field] = field === 'satuan' ? value : Number(value);
-        setInvoiceDraft(newDraft);
+    const filteredDraft = invoiceDraft.filter(item => {
+        const matchPerusahaan = filterPerusahaan ? item.perusahaan === filterPerusahaan : true;
+        const matchSiswa = filterSiswa ? item.student_id === filterSiswa : true;
+        return matchPerusahaan && matchSiswa;
+    });
+
+    const uniquePerusahaan = [...new Set(invoiceDraft.map(item => item.perusahaan))];
+    const availableSiswa = invoiceDraft.filter(item => filterPerusahaan ? item.perusahaan === filterPerusahaan : true);
+
+    const handlePerusahaanChange = (val) => {
+        setFilterPerusahaan(val);
+        setFilterSiswa(''); 
+    };
+
+    const updateDraftItem = (studentId, field, value) => {
+        setInvoiceDraft(prev => prev.map(item => 
+            item.student_id === studentId ? { ...item, [field]: field === 'satuan' ? value : Number(value) } : item
+        ));
+    };
+
+    const removeDraftItem = (studentId) => {
+        setInvoiceDraft(prev => prev.filter(item => item.student_id !== studentId));
     };
 
     const handleGenerateInvoiceKumiai = async (e) => {
         e.preventDefault();
-        if (invoiceDraft.length === 0) return alert("Tidak ada rincian siswa untuk ditagihkan.");
+        if (filteredDraft.length === 0) return alert("Tidak ada rincian siswa untuk ditagihkan pada filter ini.");
+        if (!invoiceForm.periodeMulai || !invoiceForm.periodeSelesai) return alert("Harap isi Tanggal Mulai dan Tanggal Akhir Periode Tagihan.");
+
         setIsSubmitting(true);
         try {
-            const subtotal = invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0);
+            const subtotal = filteredDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0);
             const taxAmount = Math.round(subtotal * 0.11); 
             const totalTagihan = subtotal + taxAmount;
             
             const invNo = `UJC-INV/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)}`;
+            const formatTgl = (d) => new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            const finalPeriod = `${formatTgl(invoiceForm.periodeMulai)} - ${formatTgl(invoiceForm.periodeSelesai)}`;
             
             const payload = {
                 invoice_no: invNo,
@@ -217,18 +258,20 @@ export default function DashboardAdministrasi() {
                 subtotal: subtotal,
                 tax_amount: taxAmount,
                 total_amount: totalTagihan,
-                billing_period: invoiceForm.startMonth,
+                billing_period: finalPeriod,
                 status: 'UNPAID',
                 opsi_pembayaran: invoiceForm.opsi_pembayaran,
-                detail_tagihan: invoiceDraft
+                detail_tagihan: filteredDraft
             };
 
             await supabase.from('invoices').insert([payload]);
 
             alert(`Invoice berhasil dibuat! Subtotal: ¥${subtotal.toLocaleString()}, PPN: ¥${taxAmount.toLocaleString()}`);
             setIsInvoiceModalOpen(false); 
-            setInvoiceForm({ kumiai: '', startMonth: currentYm, opsi_pembayaran: 'SESUAI_PERJANJIAN' }); 
+            setInvoiceForm({ kumiai: '', periodeMulai: '', periodeSelesai: '', opsi_pembayaran: 'SESUAI_PERJANJIAN' }); 
             setInvoiceDraft([]);
+            setFilterPerusahaan('');
+            setFilterSiswa('');
             fetchData();
         } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
     };
@@ -279,6 +322,7 @@ export default function DashboardAdministrasi() {
                 </div>
                 
                 <nav style={{ padding: '20px 15px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
+                    <button onClick={() => setActiveTab('DASHBOARD')} style={activeTab === 'DASHBOARD' ? activeMenuS : inactiveMenuS}><Layers size={18} /> Dashboard</button>
                     <button onClick={() => setActiveTab('PRIORITAS')} style={activeTab === 'PRIORITAS' ? activeMenuS : inactiveMenuS}><AlertOctagon size={18} /> Prioritas & Bermasalah</button>
                     
                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>TAGIHAN LOKAL (RP)</div>
@@ -305,6 +349,7 @@ export default function DashboardAdministrasi() {
                 <header style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
                         <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: 0, fontWeight: 900 }}>
+                            {activeTab === 'DASHBOARD' && 'Dashboard Hierarki B2B'}
                             {activeTab === 'PRIORITAS' && 'Radar Prioritas & Entitas Bermasalah'}
                             {activeTab === 'TAGIHAN_SISWA' && 'Manajemen Tagihan Siswa'}
                             {activeTab === 'ALUMNI_TRACKING' && 'Tracking Status Alumni'}
@@ -326,7 +371,7 @@ export default function DashboardAdministrasi() {
                     </div>
                 </header>
 
-                {showPriorityBanner && !isLoading && (
+                {showPriorityBanner && !isLoading && activeTab !== 'DASHBOARD' && (
                     <div style={{ background: urgentInvoices.length > 0 ? '#fff1f2' : '#fffbeb', border: `1px solid ${urgentInvoices.length > 0 ? '#fecdd3' : '#fde68a'}`, padding: '20px', borderRadius: '12px', marginBottom: '25px', display: 'flex', alignItems: 'flex-start', gap: '15px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', flexShrink: 0 }}>
                         <div style={{ background: urgentInvoices.length > 0 ? '#ffe4e6' : '#fef3c7', padding: '12px', borderRadius: '50%' }}>
                             <BellRing size={28} color={urgentInvoices.length > 0 ? '#e11d48' : '#d97706'} />
@@ -335,7 +380,7 @@ export default function DashboardAdministrasi() {
                             <h3 style={{ margin: '0 0 8px 0', color: urgentInvoices.length > 0 ? '#be123c' : '#b45309', fontSize: '1.1rem', fontWeight: 900 }}>🚨 PENGINGAT SISTEM: PRIORITAS PENAGIHAN HARI INI</h3>
                             <ul style={{ margin: 0, paddingLeft: '20px', color: urgentInvoices.length > 0 ? '#9f1239' : '#92400e', fontSize: '0.9rem', fontWeight: 700, lineHeight: '1.6' }}>
                                 {urgentInvoices.length > 0 && <li>Segera tagih <b>{urgentInvoices.length} Invoice Kumiai</b> yang belum lunas (Total Tertunggak: <b>¥ {totalKerugianYen.toLocaleString()}</b>).</li>}
-                                {tunggakanBesarSiswa.length > 0 && <li>Terdapat <b>{tunggakanBesarSiswa.length} Siswa Lokal</b> dengan tunggakan &gt; Rp 20 Juta (Total Uang Nyangkut: <b>Rp {totalTunggakanRp.toLocaleString()}</b>).</li>}
+                                {tunggakanBesarSiswa.length > 0 && <li>Terdapat <b>{tunggakanBesarSiswa.length} Siswa Lokal</b> dengan tunggakan &gt; Rp 20 Juta.</li>}
                                 {problematicAlumni.length > 0 && <li>Ada <b>{problematicAlumni.length} Alumni Kabur/Sakit</b>, tagihan sudah di-freeze otomatis.</li>}
                                 {unconfirmedAlumni.length > 0 && <li>Terdapat <b>{unconfirmedAlumni.length} Alumni BUTUH KONFIRMASI (Ghosting)</b>, pastikan status kontraknya di Jepang.</li>}
                             </ul>
@@ -344,6 +389,56 @@ export default function DashboardAdministrasi() {
                 )}
 
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+                    
+                    {activeTab === 'DASHBOARD' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '30px' }}>
+                            <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '1.1rem' }}>Peta Persebaran Alumni (Aktif)</h3>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Data digenerate otomatis berdasarkan relasi Kumiai, Perusahaan, dan Siswa pada tabel.</p>
+                            </div>
+                            
+                            {Object.entries(
+                                alumniData.filter(s => !s.status_alumni || s.status_alumni === 'AKTIF').reduce((acc, s) => {
+                                    const kumiai = s.kumiai_inferred || 'TANPA KUMIAI (TIDAK TERIDENTIFIKASI)';
+                                    const kaisha = s.perusahaan_tujuan || 'TANPA PERUSAHAAN';
+                                    
+                                    if (!acc[kumiai]) acc[kumiai] = {};
+                                    if (!acc[kumiai][kaisha]) acc[kumiai][kaisha] = [];
+                                    acc[kumiai][kaisha].push(s);
+                                    return acc;
+                                }, {})
+                            ).sort(([a], [b]) => a.localeCompare(b)).map(([kumiaiName, kaishas]) => (
+                                <div key={kumiaiName} style={{ background: 'white', borderRadius: '12px', border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                    <div style={{ padding: '15px 20px', background: brandNavy, color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontWeight: 900, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>🇯🇵 {kumiaiName}</div>
+                                        <div style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '20px', fontWeight: 800 }}>{Object.keys(kaishas).length} Perusahaan</div>
+                                    </div>
+                                    <div style={{ padding: '15px' }}>
+                                        {Object.entries(kaishas).sort(([a], [b]) => a.localeCompare(b)).map(([kaishaName, siswas]) => (
+                                            <div key={kaishaName} style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                                                <div style={{ padding: '12px 15px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>🏢 {kaishaName}</span>
+                                                    <span style={{ fontSize: '0.75rem', background: '#dbeafe', color: '#1d4ed8', padding: '4px 10px', borderRadius: '20px', fontWeight: 800 }}>{siswas.length} Siswa Aktif</span>
+                                                </div>
+                                                <div style={{ padding: '15px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px', background: 'white' }}>
+                                                    {siswas.sort((a,b) => a.nama_lengkap.localeCompare(b.nama_lengkap)).map(s => (
+                                                        <div key={s.id} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc' }}>
+                                                            <UserCircle size={24} color="#94a3b8"/>
+                                                            <div>
+                                                                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.85rem', textTransform: 'uppercase' }}>{s.nama_lengkap}</div>
+                                                                <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 800 }}>Status: AKTIF</div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {activeTab === 'PRIORITAS' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px', padding: '20px' }}>
@@ -457,7 +552,10 @@ export default function DashboardAdministrasi() {
                                 <tbody>
                                     {alumniData.filter(a => a.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase())).map(s => (
                                         <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={tdS}><div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div><div style={{ fontSize: '0.85rem', color: '#ec4899' }}>🏢 {s.perusahaan_tujuan || '-'}</div></td>
+                                            <td style={tdS}>
+                                                <div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div>
+                                                <div style={{ fontSize: '0.85rem', color: '#ec4899' }}>🏢 {s.perusahaan_tujuan || '-'}</div>
+                                            </td>
                                             <td style={tdS}>
                                                 <span style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: s.status_alumni === 'BUTUH KONFIRMASI' ? '#fef08a' : s.status_alumni === 'AKTIF' ? '#dcfce7' : '#fee2e2', color: s.status_alumni === 'BUTUH KONFIRMASI' ? '#854d0e' : s.status_alumni === 'AKTIF' ? '#166534' : '#991b1b' }}>
                                                     {s.status_alumni || 'AKTIF'} {s.status_alumni !== 'AKTIF' && s.status_alumni !== 'BUTUH KONFIRMASI' && '(FREEZE)'}
@@ -579,6 +677,7 @@ export default function DashboardAdministrasi() {
                     </div>
                 )}
 
+                {/* MODAL INVOICE BUILDER B2B (DENGAN FILTER TANGGAL, PERUSAHAAN, SISWA & TOMBOL X) */}
                 {isInvoiceModalOpen && (
                     <div style={modalOverlay}>
                         <form onSubmit={handleGenerateInvoiceKumiai} style={{...modalContent, width: '1000px', maxWidth: '95vw'}}>
@@ -587,9 +686,9 @@ export default function DashboardAdministrasi() {
                                 <button type="button" onClick={() => setIsInvoiceModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
                             </div>
                             
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                                 <div>
-                                    <label style={labelS}>Pilih Kumiai Klien (Jepang)</label>
+                                    <label style={labelS}>1. Pilih Kumiai Klien</label>
                                     <select required style={inputS} value={invoiceForm.kumiai} onChange={(e) => handleSelectKumiaiForInvoice(e.target.value)}>
                                         <option value="">-- Pilih Kumiai --</option>
                                         {masterKumiai.map((k, i) => {
@@ -598,7 +697,25 @@ export default function DashboardAdministrasi() {
                                         })}
                                     </select>
                                 </div>
-                                <div><label style={labelS}>Periode Tagihan</label><input required type="month" style={inputS} value={invoiceForm.startMonth} onChange={(e) => setInvoiceForm({...invoiceForm, startMonth: e.target.value})} /></div>
+                                <div>
+                                    <label style={labelS}>2. Filter Perusahaan</label>
+                                    <select style={inputS} value={filterPerusahaan} onChange={(e) => handlePerusahaanChange(e.target.value)} disabled={invoiceDraft.length === 0}>
+                                        <option value="">-- Semua Perusahaan --</option>
+                                        {uniquePerusahaan.map((p, i) => <option key={i} value={p}>{p}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={labelS}>3. Filter Siswa</label>
+                                    <select style={inputS} value={filterSiswa} onChange={(e) => setFilterSiswa(e.target.value)} disabled={availableSiswa.length === 0}>
+                                        <option value="">-- Semua Siswa --</option>
+                                        {availableSiswa.map((s, i) => <option key={i} value={s.student_id}>{s.nama_lengkap}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                                <div><label style={labelS}>Tanggal Mulai Periode</label><input required type="date" style={inputS} value={invoiceForm.periodeMulai} onChange={(e) => setInvoiceForm({...invoiceForm, periodeMulai: e.target.value})} /></div>
+                                <div><label style={labelS}>Tanggal Akhir Periode</label><input required type="date" style={inputS} value={invoiceForm.periodeSelesai} onChange={(e) => setInvoiceForm({...invoiceForm, periodeSelesai: e.target.value})} /></div>
                                 <div>
                                     <label style={labelS}>Opsi Termin Pembayaran</label>
                                     <select required style={inputS} value={invoiceForm.opsi_pembayaran} onChange={(e) => setInvoiceForm({...invoiceForm, opsi_pembayaran: e.target.value})}>
@@ -607,46 +724,48 @@ export default function DashboardAdministrasi() {
                                 </div>
                             </div>
 
-                            {invoiceDraft.length > 0 && (
+                            {filteredDraft.length > 0 && (
                                 <div style={{ maxHeight: '350px', overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '20px' }}>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                                         <thead style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
                                             <tr>
                                                 <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Siswa & Foto</th>
-                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Nominal Fee (¥)</th>
-                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', width: '80px' }}>Kuantitas</th>
-                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Satuan</th>
+                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', width: '120px' }}>Nominal (¥)</th>
+                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', width: '70px' }}>Qty</th>
+                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', width: '100px' }}>Satuan</th>
                                                 <th style={{ padding: '10px', textAlign: 'right', borderBottom: '1px solid #cbd5e1' }}>Subtotal</th>
+                                                <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #cbd5e1', width: '50px' }}>Aksi</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {Object.entries(
-                                                invoiceDraft.reduce((acc, item, index) => {
+                                                filteredDraft.reduce((acc, item) => {
                                                     if (!acc[item.perusahaan]) acc[item.perusahaan] = [];
-                                                    acc[item.perusahaan].push({ ...item, originalIndex: index });
+                                                    acc[item.perusahaan].push(item);
                                                     return acc;
                                                 }, {})
                                             ).map(([perusahaan, students]) => (
                                                 <React.Fragment key={perusahaan}>
                                                     <tr style={{ background: '#e2e8f0' }}>
-                                                        <td colSpan="5" style={{ padding: '8px 10px', fontWeight: 900, color: '#1e293b' }}>🏢 {perusahaan}</td>
+                                                        <td colSpan="6" style={{ padding: '8px 10px', fontWeight: 900, color: '#1e293b' }}>🏢 {perusahaan}</td>
                                                     </tr>
                                                     {students.map((item) => (
-                                                        <tr key={item.originalIndex} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                        <tr key={item.student_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                             <td style={{ padding: '10px', paddingLeft: '25px' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    {item.foto ? (
-                                                                        <img src={item.foto} alt="foto" style={{ width: '30px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
-                                                                    ) : (
-                                                                        <div style={{ width: '30px', height: '40px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#94a3b8' }}>No Pic</div>
-                                                                    )}
+                                                                    <div style={{ width: '30px', height: '40px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#94a3b8' }}>No Pic</div>
                                                                     <div style={{ fontWeight: 800, color: '#334155' }}>{item.nama_lengkap}</div>
                                                                 </div>
                                                             </td>
-                                                            <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.nominal} onChange={(e) => updateDraftItem(item.originalIndex, 'nominal', e.target.value)} /></td>
-                                                            <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.kuantitas} onChange={(e) => updateDraftItem(item.originalIndex, 'kuantitas', e.target.value)} /></td>
-                                                            <td style={{ padding: '10px' }}><select style={{ ...inputS, padding: '6px' }} value={item.satuan} onChange={(e) => updateDraftItem(item.originalIndex, 'satuan', e.target.value)}>{SATUAN_WAKTU.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+                                                            <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.nominal} onChange={(e) => updateDraftItem(item.student_id, 'nominal', e.target.value)} /></td>
+                                                            <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.kuantitas} onChange={(e) => updateDraftItem(item.student_id, 'kuantitas', e.target.value)} /></td>
+                                                            <td style={{ padding: '10px' }}><select style={{ ...inputS, padding: '6px' }} value={item.satuan} onChange={(e) => updateDraftItem(item.student_id, 'satuan', e.target.value)}>{SATUAN_WAKTU.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
                                                             <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: brandNavy }}>¥ {(item.nominal * item.kuantitas).toLocaleString()}</td>
+                                                            <td style={{ padding: '10px', textAlign: 'center' }}>
+                                                                <button type="button" onClick={() => removeDraftItem(item.student_id)} style={{ padding: '4px 8px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                                                                    <X size={14}/>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </React.Fragment>
@@ -659,10 +778,10 @@ export default function DashboardAdministrasi() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                                 <div>
                                     <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>TOTAL SUBTOTAL (YEN)</div>
-                                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#334155' }}>¥ {invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0).toLocaleString()}</div>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', marginTop: '5px' }}>+ PPN 11%: ¥ {Math.round(invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0) * 0.11).toLocaleString()}</div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#334155' }}>¥ {filteredDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0).toLocaleString()}</div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', marginTop: '5px' }}>+ PPN 11%: ¥ {Math.round(filteredDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0) * 0.11).toLocaleString()}</div>
                                 </div>
-                                <button type="submit" disabled={isSubmitting || invoiceDraft.length === 0} style={{ padding: '12px 24px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: invoiceDraft.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button type="submit" disabled={isSubmitting || filteredDraft.length === 0} style={{ padding: '12px 24px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: filteredDraft.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {isSubmitting ? <Loader2 size={18} className="animate-spin"/> : 'Generate & Simpan Invoice'}
                                 </button>
                             </div>
