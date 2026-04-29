@@ -1,20 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import {
-    Wallet, Building2, Search, Loader2, UserCircle, Plus, X, Award,
-    Receipt, AlertOctagon, PlaneTakeoff, ShieldAlert, ArrowDownCircle,
+import { 
+    Wallet, Building2, Search, Loader2, UserCircle, Plus, X, Award, 
+    Receipt, AlertOctagon, PlaneTakeoff, ShieldAlert, ArrowDownCircle, 
     ArrowUpCircle, FileText, CheckCircle2, Clock, XCircle, BellRing
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const brandNavy = '#101869';
 
+// ── MCU DIHAPUS: Sisa Pendidikan Reguler & Diklat ──
 const PAYMENT_STAGES = [
-    { id: 'TAHAP_2', label: 'MCU Awal', amount: 600000, isCicilan: false },
     { id: 'TAHAP_3', label: 'Pendidikan Reguler', amount: 5000000, isCicilan: true },
-    { id: 'TAHAP_4', label: 'General MCU (Pasca Match)', amount: 1400000, isCicilan: false },
-    { id: 'TAHAP_5', label: 'Pendidikan Diklat', amount: 33000000, isCicilan: true },
-    { id: 'TAHAP_6', label: 'MCU Pra-Terbang', amount: 650000, isCicilan: false }
+    { id: 'TAHAP_5', label: 'Pendidikan Diklat', amount: 33000000, isCicilan: true }
 ];
 
 const OPSI_PEMBAYARAN = [
@@ -28,7 +26,7 @@ const SATUAN_WAKTU = ['Bulan', 'Minggu', 'Hari', 'Lumpsum'];
 
 export default function DashboardAdministrasi() {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('PRIORITAS');
+    const [activeTab, setActiveTab] = useState('PRIORITAS'); 
     const [students, setStudents] = useState([]);
     const [alumniData, setAlumniData] = useState([]);
     const [invoices, setInvoices] = useState([]);
@@ -46,8 +44,8 @@ export default function DashboardAdministrasi() {
     const currentYm = new Date().toISOString().slice(0, 7);
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [invoiceForm, setInvoiceForm] = useState({ kumiai: '', startMonth: currentYm, opsi_pembayaran: 'SESUAI_PERJANJIAN' });
-    const [invoiceDraft, setInvoiceDraft] = useState([]);
-
+    const [invoiceDraft, setInvoiceDraft] = useState([]); 
+    
     const [isCashModalOpen, setIsCashModalOpen] = useState(false);
     const [cashForm, setCashForm] = useState({ tipe: 'KELUAR', kategori: 'Operasional', keterangan: '', nominal: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,7 +64,7 @@ export default function DashboardAdministrasi() {
         try {
             const { data } = await supabase.from('employees').select('nama_lengkap').eq('id', userId).maybeSingle();
             if (data) setUserProfile(data);
-        } catch (err) { }
+        } catch (err) {}
     };
 
     const fetchData = async () => {
@@ -74,10 +72,11 @@ export default function DashboardAdministrasi() {
         try {
             const { data: stdData } = await supabase.from('students').select('id, nik, nama_lengkap, tahap_sekarang, total_bayar, status_pembayaran, telepon').neq('tahap_sekarang', 'SIAP BERANGKAT').order('created_at', { ascending: false });
             const { data: payData } = await supabase.from('student_payments').select('student_id, nominal');
-
+            
             const combinedData = stdData?.map(std => {
                 const totalTerbayar = payData?.filter(p => p.student_id === std.id).reduce((sum, p) => sum + Number(p.nominal), 0) || 0;
-                const targetTagihan = std.total_bayar > 0 ? std.total_bayar : 40650000;
+                // Target tagihan diubah menjadi 38 juta (5jt + 33jt) karena MCU dihapus
+                const targetTagihan = std.total_bayar > 0 ? std.total_bayar : 38000000;
                 const sisaTagihan = targetTagihan - totalTerbayar;
                 return { ...std, total_bayar: targetTagihan, total_terbayar: totalTerbayar, sisa_tagihan: sisaTagihan > 0 ? sisaTagihan : 0 };
             }) || [];
@@ -104,7 +103,7 @@ export default function DashboardAdministrasi() {
         try {
             const { data } = await supabase.from('student_payments').select('*').eq('student_id', student.id).order('tanggal_bayar', { ascending: false });
             setPayments(data || []);
-        } catch (err) { }
+        } catch (err) {}
         setIsPayModalOpen(true);
     };
 
@@ -130,10 +129,10 @@ export default function DashboardAdministrasi() {
             if ((selectedStudent.sisa_tagihan - nominalNum) <= 0) {
                 await supabase.from('students').update({ status_pembayaran: 'LUNAS' }).eq('id', selectedStudent.id);
             }
-
+            
             alert("Pembayaran berhasil dicatat & masuk ke Buku Kas!");
             setIsPayModalOpen(false);
-            fetchData();
+            fetchData(); 
         } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
     };
 
@@ -158,14 +157,14 @@ export default function DashboardAdministrasi() {
     };
 
     const updateStatusAlumni = async (id, nama, newStatus) => {
-        if (!window.confirm(`Ubah status ${nama} menjadi ${newStatus}?`)) return;
+        if(!window.confirm(`Ubah status ${nama} menjadi ${newStatus}?`)) return;
         try { await supabase.from('students').update({ status_alumni: newStatus, updated_at: new Date() }).eq('id', id); fetchData(); } catch (err) { alert(err.message); }
     };
 
     const handleSelectKumiaiForInvoice = async (kumiaiName) => {
         setInvoiceForm(prev => ({ ...prev, kumiai: kumiaiName }));
         if (!kumiaiName) { setInvoiceDraft([]); return; }
-
+        
         setIsLoading(true);
         try {
             const { data: jobOrders } = await supabase.from('job_orders').select('perusahaan').ilike('kumiai', `%${kumiaiName}%`);
@@ -173,8 +172,8 @@ export default function DashboardAdministrasi() {
 
             if (companies.length === 0) { setInvoiceDraft([]); return; }
 
-            const { data: rawStudents } = await supabase.from('students').select('id, nama_lengkap, perusahaan_tujuan, status_alumni').eq('tahap_sekarang', 'SIAP BERANGKAT');
-
+            const { data: rawStudents } = await supabase.from('students').select('id, nama_lengkap, perusahaan_tujuan, status_alumni, foto').eq('tahap_sekarang', 'SIAP BERANGKAT');
+            
             const activeAlumni = (rawStudents || []).filter(s => {
                 const isAktif = !s.status_alumni || s.status_alumni === 'AKTIF';
                 const matchCompany = s.perusahaan_tujuan && companies.includes(s.perusahaan_tujuan.toLowerCase().trim());
@@ -185,11 +184,12 @@ export default function DashboardAdministrasi() {
                 student_id: s.id,
                 nama_lengkap: s.nama_lengkap,
                 perusahaan: s.perusahaan_tujuan.trim(),
-                nominal: 5000,
+                foto: s.foto || null,
+                nominal: 5000, 
                 kuantitas: 1,
                 satuan: 'Bulan'
             })).sort((a, b) => a.perusahaan.localeCompare(b.perusahaan));
-
+            
             setInvoiceDraft(draft);
         } catch (err) { console.error(err); } finally { setIsLoading(false); }
     };
@@ -206,11 +206,11 @@ export default function DashboardAdministrasi() {
         setIsSubmitting(true);
         try {
             const subtotal = invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0);
-            const taxAmount = Math.round(subtotal * 0.11); // PPN 11%
+            const taxAmount = Math.round(subtotal * 0.11); 
             const totalTagihan = subtotal + taxAmount;
-
+            
             const invNo = `UJC-INV/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)}`;
-
+            
             const payload = {
                 invoice_no: invNo,
                 kumiai_name: invoiceForm.kumiai,
@@ -226,15 +226,15 @@ export default function DashboardAdministrasi() {
             await supabase.from('invoices').insert([payload]);
 
             alert(`Invoice berhasil dibuat! Subtotal: ¥${subtotal.toLocaleString()}, PPN: ¥${taxAmount.toLocaleString()}`);
-            setIsInvoiceModalOpen(false);
-            setInvoiceForm({ kumiai: '', startMonth: currentYm, opsi_pembayaran: 'SESUAI_PERJANJIAN' });
+            setIsInvoiceModalOpen(false); 
+            setInvoiceForm({ kumiai: '', startMonth: currentYm, opsi_pembayaran: 'SESUAI_PERJANJIAN' }); 
             setInvoiceDraft([]);
             fetchData();
         } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
     };
 
     const updateInvoiceStatus = async (inv) => {
-        if (!window.confirm(`Tandai Invoice ${inv.invoice_no} (${inv.kumiai_name}) sebagai LUNAS?\nSistem akan mencatat ¥${inv.total_amount} ke dalam Buku Kas (Uang Masuk).`)) return;
+        if(!window.confirm(`Tandai Invoice ${inv.invoice_no} (${inv.kumiai_name}) sebagai LUNAS?\nSistem akan mencatat ¥${inv.total_amount} ke dalam Buku Kas (Uang Masuk).`)) return;
         try {
             const { data: { user } } = await supabase.auth.getUser();
             await supabase.from('invoices').update({ status: 'PAID' }).eq('id', inv.id);
@@ -277,10 +277,10 @@ export default function DashboardAdministrasi() {
                     <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Div. Administrasi</h2>
                     <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', opacity: 0.8 }}>Keuangan & Audit LPK</p>
                 </div>
-
+                
                 <nav style={{ padding: '20px 15px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
                     <button onClick={() => setActiveTab('PRIORITAS')} style={activeTab === 'PRIORITAS' ? activeMenuS : inactiveMenuS}><AlertOctagon size={18} /> Prioritas & Bermasalah</button>
-
+                    
                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>TAGIHAN LOKAL (RP)</div>
                     <button onClick={() => setActiveTab('TAGIHAN_SISWA')} style={activeTab === 'TAGIHAN_SISWA' ? activeMenuS : inactiveMenuS}><Wallet size={18} /> Tagihan Siswa</button>
 
@@ -313,7 +313,7 @@ export default function DashboardAdministrasi() {
                         </h1>
                         <p style={{ color: '#64748b', margin: '5px 0 0 0' }}>Sistem ERP Terpadu Keuangan Universal Japan Course.</p>
                     </div>
-
+                    
                     <div style={{ display: 'flex', gap: '15px' }}>
                         {['TAGIHAN_SISWA', 'ALUMNI_TRACKING', 'INVOICE_KUMIAI', 'BUKU_KAS'].includes(activeTab) && (
                             <div style={{ position: 'relative' }}>
@@ -321,8 +321,8 @@ export default function DashboardAdministrasi() {
                                 <input type="text" placeholder="Cari Data..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px' }} />
                             </div>
                         )}
-                        {activeTab === 'INVOICE_KUMIAI' && <button onClick={() => setIsInvoiceModalOpen(true)} style={btnPrimary}><Plus size={18} /> Buat Invoice Kumiai</button>}
-                        {activeTab === 'BUKU_KAS' && <button onClick={() => setIsCashModalOpen(true)} style={btnPrimary}><Plus size={18} /> Catat Transaksi Manual</button>}
+                        {activeTab === 'INVOICE_KUMIAI' && <button onClick={() => setIsInvoiceModalOpen(true)} style={btnPrimary}><Plus size={18}/> Buat Invoice Kumiai</button>}
+                        {activeTab === 'BUKU_KAS' && <button onClick={() => setIsCashModalOpen(true)} style={btnPrimary}><Plus size={18}/> Catat Transaksi Manual</button>}
                     </div>
                 </header>
 
@@ -347,17 +347,17 @@ export default function DashboardAdministrasi() {
                     {activeTab === 'PRIORITAS' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px', padding: '20px' }}>
-                                <h3 style={{ margin: '0 0 15px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}><AlertOctagon size={20} /> INVOICE KUMIAI BELUM DIBAYAR ({urgentInvoices.length})</h3>
-                                {urgentInvoices.length === 0 ? <p style={{ margin: 0, color: '#92400e' }}>Semua invoice sudah dilunasi Kumiai.</p> : (
+                                <h3 style={{ margin: '0 0 15px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px' }}><AlertOctagon size={20}/> INVOICE KUMIAI BELUM DIBAYAR ({urgentInvoices.length})</h3>
+                                {urgentInvoices.length === 0 ? <p style={{margin:0, color:'#92400e'}}>Semua invoice sudah dilunasi Kumiai.</p> : (
                                     <div style={{ display: 'grid', gap: '10px' }}>
                                         {urgentInvoices.map(inv => (
                                             <div key={inv.id} style={{ background: 'white', padding: '15px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                                                <div><div style={{ fontWeight: 800, color: '#1e293b' }}>{inv.kumiai_name}</div><div style={{ fontSize: '0.8rem', color: '#64748b' }}>Invoice: {inv.invoice_no} | Periode: {inv.billing_period}</div></div>
+                                                <div><div style={{fontWeight: 800, color: '#1e293b'}}>{inv.kumiai_name}</div><div style={{fontSize: '0.8rem', color: '#64748b'}}>Invoice: {inv.invoice_no} | Periode: {inv.billing_period}</div></div>
                                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px' }}>
-                                                    <div style={{ fontWeight: 900, color: '#ef4444', fontSize: '1.2rem' }}>¥ {Number(inv.total_amount).toLocaleString()}</div>
+                                                    <div style={{fontWeight: 900, color: '#ef4444', fontSize: '1.2rem'}}>¥ {Number(inv.total_amount).toLocaleString()}</div>
                                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                                        <button onClick={() => updateInvoiceStatus(inv)} style={{ ...btnA('#10b981'), padding: '4px 10px', fontSize: '0.75rem' }}>Lunas</button>
-                                                        <button onClick={() => handleKirimReminderWA(inv)} style={{ ...btnA('#16a34a'), padding: '4px 10px', fontSize: '0.75rem', background: '#dcfce7' }}>Kirim WA</button>
+                                                        <button onClick={() => updateInvoiceStatus(inv)} style={{...btnA('#10b981'), padding:'4px 10px', fontSize:'0.75rem'}}>Lunas</button>
+                                                        <button onClick={() => handleKirimReminderWA(inv)} style={{...btnA('#16a34a'), padding:'4px 10px', fontSize:'0.75rem', background: '#dcfce7'}}>Kirim WA</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -367,13 +367,13 @@ export default function DashboardAdministrasi() {
                             </div>
 
                             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '20px' }}>
-                                <h3 style={{ margin: '0 0 15px 0', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px' }}><ShieldAlert size={20} /> ALUMNI BERMASALAH & GHOSTING</h3>
-                                {problematicAlumni.length === 0 && unconfirmedAlumni.length === 0 ? <p style={{ margin: 0, color: '#7f1d1d' }}>Tidak ada catatan alumni bermasalah.</p> : (
+                                <h3 style={{ margin: '0 0 15px 0', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px' }}><ShieldAlert size={20}/> ALUMNI BERMASALAH & GHOSTING</h3>
+                                {problematicAlumni.length === 0 && unconfirmedAlumni.length === 0 ? <p style={{margin:0, color:'#7f1d1d'}}>Tidak ada catatan alumni bermasalah.</p> : (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '10px' }}>
                                         {[...problematicAlumni, ...unconfirmedAlumni].map(alum => (
                                             <div key={alum.id} style={{ background: 'white', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${alum.status_alumni === 'BUTUH KONFIRMASI' ? '#eab308' : '#ef4444'}` }}>
-                                                <div style={{ fontWeight: 800, color: '#1e293b' }}>{alum.nama_lengkap}</div>
-                                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '5px' }}>Kumiai: {alum.perusahaan_tujuan}</div>
+                                                <div style={{fontWeight: 800, color: '#1e293b'}}>{alum.nama_lengkap}</div>
+                                                <div style={{fontSize: '0.8rem', color: '#64748b', marginBottom: '5px'}}>Kumiai: {alum.perusahaan_tujuan}</div>
                                                 <span style={{ fontSize: '0.7rem', padding: '4px 8px', background: alum.status_alumni === 'BUTUH KONFIRMASI' ? '#fef08a' : '#fee2e2', color: alum.status_alumni === 'BUTUH KONFIRMASI' ? '#854d0e' : '#991b1b', fontWeight: 800, borderRadius: '4px' }}>Status: {alum.status_alumni}</span>
                                             </div>
                                         ))}
@@ -387,16 +387,16 @@ export default function DashboardAdministrasi() {
                         <div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '20px' }}>
                                 <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', borderLeft: '5px solid #10b981' }}>
-                                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>TOTAL MASUK & MENGGANTUNG</div>
-                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#10b981' }}>Rp {totalMasuk.toLocaleString()}</div>
+                                    <div style={{fontSize: '0.8rem', fontWeight: 800, color: '#64748b'}}>TOTAL MASUK & MENGGANTUNG</div>
+                                    <div style={{fontSize: '1.8rem', fontWeight: 900, color: '#10b981'}}>Rp {totalMasuk.toLocaleString()}</div>
                                 </div>
                                 <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', borderLeft: '5px solid #ef4444' }}>
-                                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>TOTAL UANG KELUAR</div>
-                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ef4444' }}>Rp {totalKeluar.toLocaleString()}</div>
+                                    <div style={{fontSize: '0.8rem', fontWeight: 800, color: '#64748b'}}>TOTAL UANG KELUAR</div>
+                                    <div style={{fontSize: '1.8rem', fontWeight: 900, color: '#ef4444'}}>Rp {totalKeluar.toLocaleString()}</div>
                                 </div>
                                 <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', borderLeft: `5px solid ${brandNavy}` }}>
-                                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>SALDO KAS SAAT INI</div>
-                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: brandNavy }}>Rp {saldoAkhir.toLocaleString()}</div>
+                                    <div style={{fontSize: '0.8rem', fontWeight: 800, color: '#64748b'}}>SALDO KAS SAAT INI</div>
+                                    <div style={{fontSize: '1.8rem', fontWeight: 900, color: brandNavy}}>Rp {saldoAkhir.toLocaleString()}</div>
                                 </div>
                             </div>
 
@@ -409,17 +409,17 @@ export default function DashboardAdministrasi() {
                                         {transactions.map(t => (
                                             <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                 <td style={tdS}>
-                                                    <div style={{ fontWeight: 800 }}>{new Date(t.tanggal).toLocaleDateString('id-ID')}</div>
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: t.tipe === 'KELUAR' ? '#ef4444' : t.tipe === 'DANA_MENGGANTUNG' ? '#eab308' : '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        {t.tipe === 'MASUK' ? <ArrowDownCircle size={14} /> : <ArrowUpCircle size={14} />} {t.tipe.replace('_', ' ')}
+                                                    <div style={{fontWeight:800}}>{new Date(t.tanggal).toLocaleDateString('id-ID')}</div>
+                                                    <div style={{ fontSize:'0.75rem', fontWeight:800, color: t.tipe==='KELUAR' ? '#ef4444' : t.tipe==='DANA_MENGGANTUNG' ? '#eab308' : '#10b981', display:'flex', alignItems:'center', gap:'4px' }}>
+                                                        {t.tipe==='MASUK' ? <ArrowDownCircle size={14}/> : <ArrowUpCircle size={14}/>} {t.tipe.replace('_', ' ')}
                                                     </div>
                                                 </td>
                                                 <td style={tdS}>
-                                                    <div style={{ fontWeight: 800, color: '#1e293b' }}>{t.kategori}</div>
-                                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{t.keterangan}</div>
+                                                    <div style={{fontWeight:800, color: '#1e293b'}}>{t.kategori}</div>
+                                                    <div style={{fontSize:'0.8rem', color:'#64748b'}}>{t.keterangan}</div>
                                                 </td>
-                                                <td style={{ ...tdS, fontWeight: 900, fontSize: '1.1rem', color: t.tipe === 'KELUAR' ? '#ef4444' : t.tipe === 'DANA_MENGGANTUNG' ? '#eab308' : '#10b981' }}>
-                                                    {t.tipe === 'KELUAR' ? '-' : '+'} {Number(t.nominal).toLocaleString()}
+                                                <td style={{...tdS, fontWeight: 900, fontSize: '1.1rem', color: t.tipe==='KELUAR' ? '#ef4444' : t.tipe==='DANA_MENGGANTUNG' ? '#eab308' : '#10b981'}}>
+                                                    {t.tipe==='KELUAR' ? '-' : '+'} {Number(t.nominal).toLocaleString()}
                                                 </td>
                                             </tr>
                                         ))}
@@ -433,14 +433,14 @@ export default function DashboardAdministrasi() {
                         <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <tr><th style={thS}>Siswa (Pra-Terbang)</th><th style={thS}>Sisa (Tunggakan)</th><th style={{ ...thS, textAlign: 'center' }}>Aksi</th></tr>
+                                    <tr><th style={thS}>Siswa (Pra-Terbang)</th><th style={thS}>Sisa (Tunggakan)</th><th style={{...thS, textAlign: 'center'}}>Aksi</th></tr>
                                 </thead>
                                 <tbody>
                                     {students.filter(s => s.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase())).map(s => (
                                         <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={tdS}><div style={{ fontWeight: 800 }}>{s.nama_lengkap}</div><div style={badgeS}>{s.status_pembayaran || 'BELUM LUNAS'}</div></td>
-                                            <td style={{ ...tdS, color: s.sisa_tagihan > 0 ? '#ef4444' : '#64748b', fontWeight: 800 }}>Rp {s.sisa_tagihan.toLocaleString('id-ID')}</td>
-                                            <td style={{ ...tdS, textAlign: 'center' }}><button onClick={() => openPaymentModal(s)} style={{ ...btnA('#3b82f6'), margin: '0 auto' }}><Receipt size={18} /> Detail & Bayar</button></td>
+                                            <td style={tdS}><div style={{fontWeight:800}}>{s.nama_lengkap}</div><div style={badgeS}>{s.status_pembayaran || 'BELUM LUNAS'}</div></td>
+                                            <td style={{...tdS, color: s.sisa_tagihan > 0 ? '#ef4444' : '#64748b', fontWeight: 800}}>Rp {s.sisa_tagihan.toLocaleString('id-ID')}</td>
+                                            <td style={{...tdS, textAlign: 'center'}}><button onClick={() => openPaymentModal(s)} style={{...btnA('#3b82f6'), margin: '0 auto'}}><Receipt size={18}/> Detail & Bayar</button></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -452,18 +452,18 @@ export default function DashboardAdministrasi() {
                         <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <tr><th style={thS}>Nama Alumni</th><th style={thS}>Status Penagihan</th><th style={{ ...thS, textAlign: 'center' }}>Ubah Status Sistem</th></tr>
+                                    <tr><th style={thS}>Nama Alumni</th><th style={thS}>Status Penagihan</th><th style={{...thS, textAlign: 'center'}}>Ubah Status Sistem</th></tr>
                                 </thead>
                                 <tbody>
                                     {alumniData.filter(a => a.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase())).map(s => (
                                         <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={tdS}><div style={{ fontWeight: 800, color: '#1e293b' }}>{s.nama_lengkap}</div><div style={{ fontSize: '0.85rem', color: '#ec4899' }}>🏢 {s.perusahaan_tujuan || '-'}</div></td>
+                                            <td style={tdS}><div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div><div style={{ fontSize: '0.85rem', color: '#ec4899' }}>🏢 {s.perusahaan_tujuan || '-'}</div></td>
                                             <td style={tdS}>
                                                 <span style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: s.status_alumni === 'BUTUH KONFIRMASI' ? '#fef08a' : s.status_alumni === 'AKTIF' ? '#dcfce7' : '#fee2e2', color: s.status_alumni === 'BUTUH KONFIRMASI' ? '#854d0e' : s.status_alumni === 'AKTIF' ? '#166534' : '#991b1b' }}>
                                                     {s.status_alumni || 'AKTIF'} {s.status_alumni !== 'AKTIF' && s.status_alumni !== 'BUTUH KONFIRMASI' && '(FREEZE)'}
                                                 </span>
                                             </td>
-                                            <td style={{ ...tdS, textAlign: 'center' }}>
+                                            <td style={{...tdS, textAlign: 'center'}}>
                                                 <select style={inputS} value={s.status_alumni || 'AKTIF'} onChange={(e) => updateStatusAlumni(s.id, s.nama_lengkap, e.target.value)}>
                                                     <option value="AKTIF">AKTIF (Ditagih)</option>
                                                     <option value="BUTUH KONFIRMASI">BUTUH KONFIRMASI (Ghosting/Freeze)</option>
@@ -483,23 +483,20 @@ export default function DashboardAdministrasi() {
                         <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <tr><th style={thS}>No. Invoice</th><th style={thS}>Kumiai / Termin</th><th style={thS}>Total (Yen)</th><th style={{ ...thS, textAlign: 'center' }}>Opsi Cetak & Aksi</th></tr>
+                                    <tr><th style={thS}>No. Invoice</th><th style={thS}>Kumiai / Termin</th><th style={thS}>Total (Yen)</th><th style={{...thS, textAlign: 'center'}}>Opsi Cetak & Aksi</th></tr>
                                 </thead>
                                 <tbody>
                                     {invoices.filter(i => i.kumiai_name.toLowerCase().includes(searchTerm.toLowerCase())).map(inv => (
                                         <tr key={inv.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={tdS}><div style={{ fontWeight: 800 }}>{inv.invoice_no}</div><div style={{ fontSize: '0.75rem', color: '#64748b' }}>{inv.billing_period}</div></td>
-                                            <td style={tdS}><div style={{ fontSize: '0.9rem', fontWeight: 800 }}>{inv.kumiai_name}</div><div style={{ fontSize: '0.75rem', color: '#8b5cf6' }}>{inv.opsi_pembayaran?.replace(/_/g, ' ')}</div></td>
+                                            <td style={tdS}><div style={{fontWeight:800}}>{inv.invoice_no}</div><div style={{fontSize:'0.75rem', color:'#64748b'}}>{inv.billing_period}</div></td>
+                                            <td style={tdS}><div style={{ fontSize: '0.9rem', fontWeight: 800 }}>{inv.kumiai_name}</div><div style={{fontSize:'0.75rem', color:'#8b5cf6'}}>{inv.opsi_pembayaran?.replace(/_/g, ' ')}</div></td>
                                             <td style={tdS}><div style={{ fontWeight: 900, color: '#ec4899', fontSize: '1.2rem' }}>¥ {Number(inv.total_amount).toLocaleString()}</div></td>
-                                            <td style={{ ...tdS, textAlign: 'center' }}>
+                                            <td style={{...tdS, textAlign: 'center'}}>
                                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
                                                     {inv.status !== 'PAID' ? <button onClick={() => updateInvoiceStatus(inv)} style={{ padding: '6px 12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem' }}>Lunas?</button> : <span style={{ fontSize: '0.7rem', padding: '6px 10px', borderRadius: '6px', fontWeight: 800, background: '#dcfce7', color: '#166534' }}>PAID</span>}
-                                                    {/* TIGA MODE CETAK */}
-                                                    <button onClick={() => window.open(`/print-invoice-detail/${inv.id}`, '_blank')} style={{ padding: '6px 12px', background: brandNavy, color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14} /> Detail (Biasa)</button>
-
-                                                    <button onClick={() => window.open(`/print-invoice-detail/${inv.id}?foto=true`, '_blank')} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14} /> Detail (+Foto)</button>
-
-                                                    <button onClick={() => window.open(`/print-invoice-summary/${inv.id}`, '_blank')} style={{ padding: '6px 12px', background: '#eab308', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14} /> Kwitansi</button>
+                                                    <button onClick={() => window.open(`/print-invoice-detail/${inv.id}`, '_blank')} style={{ padding: '6px 12px', background: brandNavy, color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14}/> Detail</button>
+                                                    <button onClick={() => window.open(`/print-invoice-detail/${inv.id}?foto=true`, '_blank')} style={{ padding: '6px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14}/> +Foto</button>
+                                                    <button onClick={() => window.open(`/print-invoice-summary/${inv.id}`, '_blank')} style={{ padding: '6px 12px', background: '#eab308', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}><FileText size={14}/> Kwitansi</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -510,7 +507,6 @@ export default function DashboardAdministrasi() {
                     )}
                 </div>
 
-                {/* MODAL TRANSAKSI KAS */}
                 {isCashModalOpen && (
                     <div style={modalOverlay}>
                         <form onSubmit={handleCashSubmit} style={modalContent}>
@@ -519,20 +515,19 @@ export default function DashboardAdministrasi() {
                                 <button type="button" onClick={() => setIsCashModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                                <div><label style={labelS}>Tipe Transaksi</label><select required style={inputS} value={cashForm.tipe} onChange={(e) => setCashForm({ ...cashForm, tipe: e.target.value })}><option value="KELUAR">Uang Keluar</option><option value="MASUK">Uang Masuk</option><option value="DANA_MENGGANTUNG">Dana Menggantung (Tak Bertuan)</option></select></div>
-                                <div><label style={labelS}>Kategori</label><input required style={inputS} value={cashForm.kategori} onChange={(e) => setCashForm({ ...cashForm, kategori: e.target.value })} placeholder="Cth: Operasional, Gaji, dll" /></div>
+                                <div><label style={labelS}>Tipe Transaksi</label><select required style={inputS} value={cashForm.tipe} onChange={(e) => setCashForm({...cashForm, tipe: e.target.value})}><option value="KELUAR">Uang Keluar</option><option value="MASUK">Uang Masuk</option><option value="DANA_MENGGANTUNG">Dana Menggantung (Tak Bertuan)</option></select></div>
+                                <div><label style={labelS}>Kategori</label><input required style={inputS} value={cashForm.kategori} onChange={(e) => setCashForm({...cashForm, kategori: e.target.value})} placeholder="Cth: Operasional, Gaji, dll" /></div>
                             </div>
-                            <div style={{ marginBottom: '15px' }}><label style={labelS}>Keterangan Detail</label><textarea required rows="2" style={{ ...inputS, resize: 'vertical' }} value={cashForm.keterangan} onChange={(e) => setCashForm({ ...cashForm, keterangan: e.target.value })} placeholder="Rincian transaksi..."></textarea></div>
-                            <div style={{ marginBottom: '25px' }}><label style={labelS}>Nominal (Rp/Yen)</label><input required type="number" style={{ ...inputS, fontSize: '1.2rem', fontWeight: 800, color: cashForm.tipe === 'KELUAR' ? '#ef4444' : cashForm.tipe === 'DANA_MENGGANTUNG' ? '#eab308' : '#10b981' }} value={cashForm.nominal} onChange={(e) => setCashForm({ ...cashForm, nominal: e.target.value })} /></div>
+                            <div style={{ marginBottom: '15px' }}><label style={labelS}>Keterangan Detail</label><textarea required rows="2" style={{...inputS, resize: 'vertical'}} value={cashForm.keterangan} onChange={(e) => setCashForm({...cashForm, keterangan: e.target.value})} placeholder="Rincian transaksi..."></textarea></div>
+                            <div style={{ marginBottom: '25px' }}><label style={labelS}>Nominal (Rp/Yen)</label><input required type="number" style={{...inputS, fontSize: '1.2rem', fontWeight: 800, color: cashForm.tipe === 'KELUAR' ? '#ef4444' : cashForm.tipe === 'DANA_MENGGANTUNG' ? '#eab308' : '#10b981'}} value={cashForm.nominal} onChange={(e) => setCashForm({...cashForm, nominal: e.target.value})} /></div>
                             <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>{isSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}</button>
                         </form>
                     </div>
                 )}
 
-                {/* MODAL PEMBAYARAN SISWA (WATERFALL) */}
                 {isPayModalOpen && selectedStudent && (
                     <div style={modalOverlay}>
-                        <div style={{ ...modalContent, width: '900px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+                        <div style={{...modalContent, width: '900px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', maxHeight: '90vh'}}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
                                 <div><h3 style={{ margin: 0, fontWeight: 900, fontSize: '1.5rem', color: brandNavy }}>Detail & Pembayaran Tagihan</h3><p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#64748b' }}>{selectedStudent.nama_lengkap}</p></div>
                                 <button onClick={() => setIsPayModalOpen(false)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><X /></button>
@@ -547,10 +542,10 @@ export default function DashboardAdministrasi() {
                                             <div key={idx} style={{ padding: '12px', borderRadius: '8px', border: `1px solid ${stage.sisa === 0 ? '#10b981' : stage.sisa < stage.amount ? '#f59e0b' : '#e2e8f0'}`, background: stage.sisa === 0 ? '#ecfdf5' : stage.sisa < stage.amount ? '#fffbeb' : '#f8fafc' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                                                     <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem' }}>{stage.label}</span>
-                                                    {stage.sisa === 0 ? <CheckCircle2 size={18} color="#10b981" /> : stage.sisa < stage.amount ? <Clock size={18} color="#f59e0b" /> : <XCircle size={18} color="#94a3b8" />}
+                                                    {stage.sisa === 0 ? <CheckCircle2 size={18} color="#10b981"/> : stage.sisa < stage.amount ? <Clock size={18} color="#f59e0b"/> : <XCircle size={18} color="#94a3b8"/>}
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
-                                                    <span>Target: Rp {stage.amount.toLocaleString()}</span><span>Terbayar: <b style={{ color: '#10b981' }}>Rp {stage.paidHere.toLocaleString()}</b></span>
+                                                    <span>Target: Rp {stage.amount.toLocaleString()}</span><span>Terbayar: <b style={{color: '#10b981'}}>Rp {stage.paidHere.toLocaleString()}</b></span>
                                                 </div>
                                                 {stage.sisa > 0 && <div style={{ marginTop: '6px', fontSize: '0.8rem', fontWeight: 800, color: '#ef4444', background: '#fee2e2', padding: '4px 8px', borderRadius: '4px', display: 'inline-block' }}>Kekurangan: Rp {stage.sisa.toLocaleString()}</div>}
                                             </div>
@@ -571,12 +566,12 @@ export default function DashboardAdministrasi() {
                                                 <option value="LAINNYA">Lainnya / Tagihan Khusus</option>
                                             </select>
                                         </div>
-                                        <div style={{ marginBottom: '15px' }}><label style={labelS}>Nominal Uang Diterima (Rp)</label><input type="number" required max={selectedStudent.sisa_tagihan} style={{ ...inputS, fontSize: '1.2rem', fontWeight: 800, color: brandNavy }} value={payForm.nominal} onChange={(e) => setPayForm({ ...payForm, nominal: e.target.value })} /></div>
+                                        <div style={{ marginBottom: '15px' }}><label style={labelS}>Nominal Uang Diterima (Rp)</label><input type="number" required max={selectedStudent.sisa_tagihan} style={{...inputS, fontSize: '1.2rem', fontWeight: 800, color: brandNavy}} value={payForm.nominal} onChange={(e) => setPayForm({...payForm, nominal: e.target.value})} /></div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px', marginBottom: '20px' }}>
-                                            <div><label style={labelS}>Metode</label><select style={inputS} value={payForm.metode_pembayaran} onChange={(e) => setPayForm({ ...payForm, metode_pembayaran: e.target.value })}><option value="TRANSFER">Transfer Bank</option><option value="CASH">CASH (Tunai)</option></select></div>
-                                            <div><label style={labelS}>Catatan (Opsional)</label><input style={inputS} value={payForm.keterangan} onChange={(e) => setPayForm({ ...payForm, keterangan: e.target.value })} /></div>
+                                            <div><label style={labelS}>Metode</label><select style={inputS} value={payForm.metode_pembayaran} onChange={(e) => setPayForm({...payForm, metode_pembayaran: e.target.value})}><option value="TRANSFER">Transfer Bank</option><option value="CASH">CASH (Tunai)</option></select></div>
+                                            <div><label style={labelS}>Catatan (Opsional)</label><input style={inputS} value={payForm.keterangan} onChange={(e) => setPayForm({...payForm, keterangan: e.target.value})} /></div>
                                         </div>
-                                        <button type="submit" disabled={isSubmitting || selectedStudent.sisa_tagihan === 0} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: selectedStudent.sisa_tagihan === 0 ? 'not-allowed' : 'pointer' }}>{isSubmitting ? <Loader2 className="animate-spin" size={18} /> : 'Simpan Pembayaran'}</button>
+                                        <button type="submit" disabled={isSubmitting || selectedStudent.sisa_tagihan === 0} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: selectedStudent.sisa_tagihan === 0 ? 'not-allowed' : 'pointer' }}>{isSubmitting ? <Loader2 className="animate-spin" size={18}/> : 'Simpan Pembayaran'}</button>
                                     </form>
                                 </div>
                             </div>
@@ -584,15 +579,14 @@ export default function DashboardAdministrasi() {
                     </div>
                 )}
 
-                {/* MODAL INVOICE BUILDER B2B DENGAN GROUPING & PPN */}
                 {isInvoiceModalOpen && (
                     <div style={modalOverlay}>
-                        <form onSubmit={handleGenerateInvoiceKumiai} style={{ ...modalContent, width: '1000px', maxWidth: '95vw' }}>
+                        <form onSubmit={handleGenerateInvoiceKumiai} style={{...modalContent, width: '1000px', maxWidth: '95vw'}}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
                                 <div><h3 style={{ margin: 0, fontWeight: 900 }}>Invoice Builder B2B</h3><p style={{ margin: 0, fontSize: '0.8rem', color: '#ef4444', fontWeight: 600 }}>Sistem otomatis menyaring alumni aktif dan mencegah duplikasi perusahaan.</p></div>
                                 <button type="button" onClick={() => setIsInvoiceModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
                             </div>
-
+                            
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                                 <div>
                                     <label style={labelS}>Pilih Kumiai Klien (Jepang)</label>
@@ -604,10 +598,10 @@ export default function DashboardAdministrasi() {
                                         })}
                                     </select>
                                 </div>
-                                <div><label style={labelS}>Periode Tagihan</label><input required type="month" style={inputS} value={invoiceForm.startMonth} onChange={(e) => setInvoiceForm({ ...invoiceForm, startMonth: e.target.value })} /></div>
+                                <div><label style={labelS}>Periode Tagihan</label><input required type="month" style={inputS} value={invoiceForm.startMonth} onChange={(e) => setInvoiceForm({...invoiceForm, startMonth: e.target.value})} /></div>
                                 <div>
                                     <label style={labelS}>Opsi Termin Pembayaran</label>
-                                    <select required style={inputS} value={invoiceForm.opsi_pembayaran} onChange={(e) => setInvoiceForm({ ...invoiceForm, opsi_pembayaran: e.target.value })}>
+                                    <select required style={inputS} value={invoiceForm.opsi_pembayaran} onChange={(e) => setInvoiceForm({...invoiceForm, opsi_pembayaran: e.target.value})}>
                                         {OPSI_PEMBAYARAN.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                                     </select>
                                 </div>
@@ -618,7 +612,7 @@ export default function DashboardAdministrasi() {
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                                         <thead style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
                                             <tr>
-                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Siswa</th>
+                                                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Siswa & Foto</th>
                                                 <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Nominal Fee (¥)</th>
                                                 <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', width: '80px' }}>Kuantitas</th>
                                                 <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Satuan</th>
@@ -639,7 +633,16 @@ export default function DashboardAdministrasi() {
                                                     </tr>
                                                     {students.map((item) => (
                                                         <tr key={item.originalIndex} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                            <td style={{ padding: '10px', paddingLeft: '25px' }}><div style={{ fontWeight: 800, color: '#334155' }}>{item.nama_lengkap}</div></td>
+                                                            <td style={{ padding: '10px', paddingLeft: '25px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                    {item.foto ? (
+                                                                        <img src={item.foto} alt="foto" style={{ width: '30px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                                                                    ) : (
+                                                                        <div style={{ width: '30px', height: '40px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#94a3b8' }}>No Pic</div>
+                                                                    )}
+                                                                    <div style={{ fontWeight: 800, color: '#334155' }}>{item.nama_lengkap}</div>
+                                                                </div>
+                                                            </td>
                                                             <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.nominal} onChange={(e) => updateDraftItem(item.originalIndex, 'nominal', e.target.value)} /></td>
                                                             <td style={{ padding: '10px' }}><input type="number" style={{ ...inputS, padding: '6px' }} value={item.kuantitas} onChange={(e) => updateDraftItem(item.originalIndex, 'kuantitas', e.target.value)} /></td>
                                                             <td style={{ padding: '10px' }}><select style={{ ...inputS, padding: '6px' }} value={item.satuan} onChange={(e) => updateDraftItem(item.originalIndex, 'satuan', e.target.value)}>{SATUAN_WAKTU.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
@@ -660,7 +663,7 @@ export default function DashboardAdministrasi() {
                                     <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', marginTop: '5px' }}>+ PPN 11%: ¥ {Math.round(invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0) * 0.11).toLocaleString()}</div>
                                 </div>
                                 <button type="submit" disabled={isSubmitting || invoiceDraft.length === 0} style={{ padding: '12px 24px', background: brandNavy, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: invoiceDraft.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Generate & Simpan Invoice'}
+                                    {isSubmitting ? <Loader2 size={18} className="animate-spin"/> : 'Generate & Simpan Invoice'}
                                 </button>
                             </div>
                         </form>
