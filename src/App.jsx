@@ -18,7 +18,7 @@ import EtalaseKandidat from './pages/Public/EtalaseKandidat';
 import LoginPage from './pages/Auth/LoginPage';
 import UbahPassword from './pages/Auth/UbahPassword'; 
 
-// ── IMPORT KOMPONEN DIVISI (SOP BARU) ──
+// ── IMPORT KOMPONEN DIVISI ──
 import DashboardReguler from './pages/Reguler/DashboardReguler';
 import DashboardDokumen from './pages/Dokumen/DashboardDokumen';
 import DashboardPendidikan from './pages/Pendidikan/DashboardPendidikan';
@@ -35,9 +35,13 @@ import DashboardAlumni from './pages/Alumni/DashboardAlumni';
 // ── IMPORT KOMPONEN MITRA ──
 import DashboardMitra from './pages/Mitra/DashboardMitra';
 
-// ── IMPORT KOMPONEN CETAK CV & LAPORAN ──
+// ── IMPORT KOMPONEN CETAK DOKUMEN ──
 import PrintRirekisho from './components/PrintRirekisho'; 
 import PrintLaporanKaisha from './components/PrintLaporanKaisha';
+
+// ── IMPORT RUTE INVOICE B2B BARU (DARI FOLDER COMPONENTS) ──
+import PrintInvoiceKumiai from './components/PrintInvoiceKumiai';
+import PrintInvoiceSummary from './components/PrintInvoiceSummary'; 
 
 // ── IMPORT KOMPONEN SHOUSHIKI & SERTIFIKAT ──
 import PrintShoushiki1_10 from './components/PrintShoushiki1_10';
@@ -126,8 +130,8 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Daftar rute sistem (tanpa rekrutmen)
-  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
+  // Daftar rute sistem (navbar dinonaktifkan di sini)
+  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
 
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
     return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc', color: '#101869', fontWeight: 800 }}>Memeriksa Akses...</div>;
@@ -176,6 +180,12 @@ function AppContent() {
           {/* ── RUTE CETAK DOKUMEN ── */}
           <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN', 'REGULER']}><PrintRirekisho /></ProtectedRoute>} />
           <Route path="/print-laporan-kaisha/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'REGULER', 'DOKUMEN']}><PrintLaporanKaisha /></ProtectedRoute>} />
+          
+          {/* ── RUTE INVOICE B2B BARU ── */}
+          <Route path="/print-invoice-detail/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceKumiai /></ProtectedRoute>} />
+          <Route path="/print-invoice-summary/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceSummary /></ProtectedRoute>} />
+          
+          {/* ── RUTE LAINNYA ── */}
           <Route path="/print-shoushiki-10/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_10 /></ProtectedRoute>} />
           <Route path="/print-shoushiki-13" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_13 /></ProtectedRoute>} />
           <Route path="/print-shoushiki-20/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_20 /></ProtectedRoute>} />
