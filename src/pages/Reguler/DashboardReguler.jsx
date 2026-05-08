@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { 
     Users, FileText, Activity, CheckCircle, Search, Plus, Loader2, Edit3, Camera, 
     X, Trash2, Award, UserCircle, ClipboardList, MessageCircle, PhoneOutgoing,
-    Briefcase, UserCheck, FileCheck, ArrowRightCircle
+    Briefcase, UserCheck, FileCheck, ArrowRightCircle, PlaneTakeoff, RefreshCw, 
+    Building2, Building, BookA, BrainCircuit, Printer, Save
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import RegistrationPhotoUpload from './RegistrationPhotoUpload'; 
@@ -18,7 +19,12 @@ export default function DashboardReguler() {
     const [activeTab, setActiveTab] = useState('PENDAFTARAN'); 
     const [students, setStudents] = useState([]);
     const [jobOrders, setJobOrders] = useState([]);
+    
+    // STATE MASTER DATA UNTUK DROPDOWN
     const [masterBidang, setMasterBidang] = useState([]); 
+    const [masterKaisha, setMasterKaisha] = useState([]); 
+    const [masterKumiai, setMasterKumiai] = useState([]); 
+
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     
@@ -28,24 +34,47 @@ export default function DashboardReguler() {
     const [myPoints, setMyPoints] = useState(0);
 
     const [selectedJobOrder, setSelectedJobOrder] = useState(null);
-    const [viewRaportStudent, setViewRaportStudent] = useState(null); // STATE BARU UNTUK MODAL RAPORT
+    const [viewRaportStudent, setViewRaportStudent] = useState(null);
 
-    // ── STATE FORM & MODAL ──
+    // ── STATE FORM & MODAL PENDAFTARAN ──
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [uploadModalId, setUploadModalId] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // ── STATE MODAL SELEKSI (MCU) ──
     const [evalModal, setEvalModal] = useState(null); 
     const [evalFormData, setEvalFormData] = useState({ medical_checkup_status: '' });
 
+    // ── STATE MODAL EDUKASI / DIKLAT (BARU DIINTEGRASIKAN) ──
+    const [isEduEvalOpen, setIsEduEvalOpen] = useState(false);
+    const [eduEvalStudent, setEduEvalStudent] = useState(null);
+    const [eduEvalForm, setEduEvalForm] = useState({ jenis_tes: 'UJIAN BAB', nilai: '', catatan: '' });
+
+    const [isRaportOpen, setIsRaportOpen] = useState(false);
+    const [raportStudent, setRaportStudent] = useState(null);
+    const [raportData, setRaportData] = useState({
+        kotoba: 0, bunpo: 0, dokkai: 0, choukai: 0, kaiwa: 0,
+        kecerdasan: 'B', kedisiplinan: 'B', kerapihan: 'B', perilaku: 'B',
+        kepribadian: 'B', teamwork: 'B', inisiatif: 'B', fisik: 'B'
+    });
+    const [raportPendidikanList, setRaportPendidikanList] = useState([]);
+
+    // State Modal Terbang (Input Tgl Entri)
+    const [flyModal, setFlyModal] = useState(null);
+    const [flyDate, setFlyDate] = useState('');
+
+    // ── STATE CLONE NIK / RE-ENTRY ──
+    const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
+    const [cloneNik, setCloneNik] = useState('');
+
     const [isAddJOOpen, setIsAddJOOpen] = useState(false);
-    const [joForm, setJoForm] = useState({ nama_perusahaan: '', bidang_pekerjaan: '', kuota: 1, keterangan: '' });
+    const [joForm, setJoForm] = useState({ perusahaan: '', bidang: '', kumiai: '', kuota: 1, catatan: '' });
 
     const initialFormState = {
         nik: '', nama_lengkap: '', nama_jepang: '', tempat_lahir: '', tanggal_lahir: '', 
         jenis_kelamin: '', agama: '', golongan_darah: '', tinggi_badan: '', berat_badan: '', 
-        telepon: '', email: '', asal_sekolah: '', minat_bidang: '',
+        telepon: '', email: '', asal_sekolah: '', minat_bidang: '', program: 'Pemagangan (Jisshusei)',
         pendidikan_history: [], kerja_history: [], keluarga_history: []
     };
     const [formData, setFormData] = useState(initialFormState);
@@ -57,7 +86,7 @@ export default function DashboardReguler() {
                 setCurrentUser(user);
                 fetchUserProfile(user.id);
             }
-            fetchMasterBidang(); 
+            fetchMasterData(); 
         };
         initData();
     }, []);
@@ -80,10 +109,16 @@ export default function DashboardReguler() {
         } catch (err) {}
     };
 
-    const fetchMasterBidang = async () => {
+    const fetchMasterData = async () => {
         try {
-            const { data } = await supabase.from('master_bidang').select('nama_bidang').order('nama_bidang', { ascending: true });
-            if (data) setMasterBidang(data);
+            const [bidangRes, kumiaiRes, kaishaRes] = await Promise.all([
+                supabase.from('master_bidang').select('*').order('nama_bidang', { ascending: true }),
+                supabase.from('master_kumiai').select('*'),
+                supabase.from('master_kaisha').select('*')
+            ]);
+            if (bidangRes.data) setMasterBidang(bidangRes.data);
+            if (kumiaiRes.data) setMasterKumiai(kumiaiRes.data);
+            if (kaishaRes.data) setMasterKaisha(kaishaRes.data);
         } catch (err) { console.error(err); }
     };
 
@@ -92,20 +127,20 @@ export default function DashboardReguler() {
         try {
             let query = supabase.from('students').select('*').order('updated_at', { ascending: false });
 
-            if (activeTab === 'PENDAFTARAN') query = query.in('tahap_sekarang', ['REGISTRASI', 'PEMBERKASAN']);
+            if (activeTab === 'PENDAFTARAN') query = query.in('tahap_sekarang', ['REGISTRASI']);
             else if (activeTab === 'SELEKSI') query = query.in('tahap_sekarang', ['SELEKSI AWAL']);
-            else if (activeTab === 'DIKLAT') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER']);
+            else if (activeTab === 'DIKLAT') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT']);
             else if (activeTab === 'PEMANGGILAN') query = query.or('tahap_sekarang.eq.AVAILABLE,status_akhir.eq.BELUM DAPAT JOB');
             else if (activeTab === 'MATCHING') query = query.in('tahap_sekarang', ['AVAILABLE', 'PRA_MENSETSU', 'INTERVIEW']);
-            else if (activeTab === 'PASCA_INTERVIEW') query = query.in('tahap_sekarang', ['MATCHED', 'MCU_LANJUTAN']);
+            else if (activeTab === 'PASCA_INTERVIEW') query = query.in('tahap_sekarang', ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN']);
 
             const { data, error } = await query;
             if (error) throw error;
 
-            // PARSING DATA RAPORT JSON
             const formattedData = (data || []).map(s => ({
                 ...s,
-                data_raport: typeof s.data_raport === 'string' ? JSON.parse(s.data_raport || '{}') : (s.data_raport || {})
+                data_raport: typeof s.data_raport === 'string' ? JSON.parse(s.data_raport || '{}') : (s.data_raport || {}),
+                nilai_history: typeof s.nilai_history === 'string' ? JSON.parse(s.nilai_history || '[]') : (s.nilai_history || [])
             }));
             setStudents(formattedData);
         } catch (error) { console.error("Error:", error.message); } 
@@ -159,7 +194,7 @@ export default function DashboardReguler() {
         setEditingId(siswa.id);
         const cleanArr = (arr) => { if (!arr) return []; if (Array.isArray(arr)) return arr; if (typeof arr === 'string') { try { return JSON.parse(arr); } catch { return []; } } return []; };
         setFormData({
-            nik: siswa.nik || '', nama_lengkap: siswa.nama_lengkap || '', nama_jepang: siswa.nama_jepang || '', tempat_lahir: siswa.tempat_lahir || '', tanggal_lahir: siswa.tanggal_lahir || '', jenis_kelamin: siswa.jenis_kelamin || '', agama: siswa.agama || '', golongan_darah: siswa.golongan_darah || '', tinggi_badan: siswa.tinggi_badan || '', berat_badan: siswa.berat_badan || '', telepon: siswa.telepon || '', email: siswa.email || '', asal_sekolah: siswa.asal_sekolah || '', minat_bidang: siswa.minat_bidang || '',
+            nik: siswa.nik || '', nama_lengkap: siswa.nama_lengkap || '', nama_jepang: siswa.nama_jepang || '', tempat_lahir: siswa.tempat_lahir || '', tanggal_lahir: siswa.tanggal_lahir || '', jenis_kelamin: siswa.jenis_kelamin || '', agama: siswa.agama || '', golongan_darah: siswa.golongan_darah || '', tinggi_badan: siswa.tinggi_badan || '', berat_badan: siswa.berat_badan || '', telepon: siswa.telepon || '', email: siswa.email || '', asal_sekolah: siswa.asal_sekolah || '', minat_bidang: siswa.minat_bidang || '', program: siswa.program || 'Pemagangan (Jisshusei)',
             pendidikan_history: cleanArr(siswa.pendidikan_history), kerja_history: cleanArr(siswa.kerja_history), keluarga_history: cleanArr(siswa.keluarga_history)
         });
         setIsFormOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -178,33 +213,55 @@ export default function DashboardReguler() {
                 payload.tahap_sekarang = 'REGISTRASI'; payload.status_akhir = 'Proses'; payload.created_by = currentUser ? currentUser.id : null; 
                 const { data, error } = await supabase.from('students').insert([payload]).select();
                 if (error) throw error;
-                await logActivity(`Mendaftarkan siswa: ${payload.nama_lengkap}`); await incrementPoint(); 
+                await logActivity(`Mendaftarkan siswa: ${payload.nama_lengkap} (${payload.program})`); await incrementPoint(); 
                 alert("Siswa Didaftarkan!"); if (data && data.length > 0) setUploadModalId(data[0].id);
             }
             resetForm(); fetchStudents();
         } catch (err) { alert("Error: " + err.message); } finally { setIsSubmitting(false); }
     };
 
+    const handleCloneSubmit = async (e) => {
+        e.preventDefault();
+        if (!cloneNik) return alert("Masukkan NIK terlebih dahulu!");
+        
+        setIsSubmitting(true);
+        try {
+            const { data: oldData, error: fetchErr } = await supabase.from('students').select('*').eq('nik', cloneNik).order('created_at', { ascending: false }).limit(1).single();
+            if (fetchErr || !oldData) throw new Error("Data Alumni dengan NIK tersebut tidak ditemukan!");
+            if (!window.confirm(`Ditemukan data atas nama ${oldData.nama_lengkap}. Proses Re-Entry Tokutei Ginou?`)) { setIsSubmitting(false); return; }
+
+            const newPayload = {
+                ...oldData, program: 'Tokutei Ginou (TG)', tahap_sekarang: 'REGISTRASI', status_akhir: 'Proses',
+                status_alumni: null, tanggal_entri: null, perusahaan_tujuan: null, pemberkasan_status: null, medical_checkup_status: null, data_otit: null, created_by: currentUser?.id
+            };
+            
+            delete newPayload.id; delete newPayload.created_at; delete newPayload.updated_at;
+            const { data: insertedData, error: insertErr } = await supabase.from('students').insert([newPayload]).select();
+            if (insertErr) throw insertErr;
+
+            await logActivity(`Proses Re-Entry/Clone NIK: ${oldData.nama_lengkap} -> Tokutei Ginou`); await incrementPoint();
+            alert(`Berhasil! Data ${oldData.nama_lengkap} telah digandakan dan masuk ke antrean Registrasi TG.`);
+            
+            setIsCloneModalOpen(false); setCloneNik(''); fetchStudents();
+            if (insertedData && insertedData.length > 0 && window.confirm("Apakah Anda ingin memperbarui foto profil untuk data TG ini?")) setUploadModalId(insertedData[0].id);
+        } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
+    };
+
     const handleAddJO = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            const payload = { ...joForm, created_by: currentUser?.id };
+            const payload = { perusahaan: joForm.perusahaan, bidang: joForm.bidang, kumiai: joForm.kumiai, kuota: parseInt(joForm.kuota), catatan: joForm.catatan, status: 'OPEN', created_by: currentUser?.id };
             const { error } = await supabase.from('job_orders').insert([payload]);
             if (error) throw error;
-            
-            await logActivity(`Membuat Job Order baru: ${joForm.nama_perusahaan}`);
-            await incrementPoint();
-            alert("Job Order berhasil dipublikasi!");
-            setIsAddJOOpen(false);
-            setJoForm({ nama_perusahaan: '', bidang_pekerjaan: '', kuota: 1, keterangan: '' });
-            fetchJobOrders();
+            await logActivity(`Membuat Job Order baru: ${joForm.perusahaan}`); await incrementPoint();
+            alert("Job Order berhasil dipublikasi!"); setIsAddJOOpen(false);
+            setJoForm({ perusahaan: '', bidang: '', kumiai: '', kuota: 1, catatan: '' }); fetchJobOrders();
         } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
     };
 
     const openEvalModal = (student) => { 
-        setEvalModal(student); 
-        setEvalFormData({ medical_checkup_status: student.medical_checkup_status || '' }); 
+        setEvalModal(student); setEvalFormData({ medical_checkup_status: student.medical_checkup_status || '' }); 
     };
     
     const handleEvalSubmit = async (e) => {
@@ -216,15 +273,83 @@ export default function DashboardReguler() {
         } catch (err) { alert("Gagal: " + err.message); } finally { setIsSubmitting(false); }
     };
 
+    // ── HANDLER EDUKASI (DIKLAT) ──
+    const openEduEvalModal = (student) => {
+        setEduEvalStudent(student);
+        setEduEvalForm({ jenis_tes: 'UJIAN BAB', nilai: '', catatan: '' });
+        setIsEduEvalOpen(true);
+    };
+
+    const handleEduEvalSubmit = async (e) => {
+        e.preventDefault(); setIsSubmitting(true);
+        try {
+            const dateStr = new Date().toLocaleDateString('id-ID');
+            const newRecord = { tanggal: dateStr, jenis_tes: eduEvalForm.jenis_tes, nilai: Number(eduEvalForm.nilai), catatan: eduEvalForm.catatan, instruktur: userProfile?.nama_lengkap };
+            const currentHistory = eduEvalStudent.nilai_history || [];
+            const updatedHistory = [...currentHistory, newRecord];
+            const totalNilai = updatedHistory.reduce((sum, item) => sum + item.nilai, 0);
+            const avgNilai = Math.round(totalNilai / updatedHistory.length);
+
+            const { error } = await supabase.from('students').update({ nilai_history: updatedHistory, nilai_bahasa: avgNilai, updated_at: new Date() }).eq('id', eduEvalStudent.id);
+            if (error) throw error;
+            await logActivity(`Input evaluasi harian: ${eduEvalStudent.nama_lengkap}`); await incrementPoint();
+            alert("Nilai evaluasi harian berhasil disimpan!"); setIsEduEvalOpen(false); fetchStudents();
+        } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
+    };
+
+    const openRaportModal = (student) => {
+        setRaportStudent(student);
+        const parsedRaport = student.data_raport || {};
+        const parsedPendidikan = typeof student.pendidikan_history === 'string' ? JSON.parse(student.pendidikan_history || '[]') : (student.pendidikan_history || []);
+        
+        setRaportPendidikanList(Array.isArray(parsedPendidikan) ? parsedPendidikan : []);
+        setRaportData({
+            kotoba: parsedRaport.kotoba || 0, bunpo: parsedRaport.bunpo || 0, dokkai: parsedRaport.dokkai || 0, choukai: parsedRaport.choukai || 0, kaiwa: parsedRaport.kaiwa || 0,
+            kecerdasan: parsedRaport.kecerdasan || 'B', kedisiplinan: parsedRaport.kedisiplinan || 'B', kerapihan: parsedRaport.kerapihan || 'B', perilaku: parsedRaport.perilaku || 'B',
+            kepribadian: parsedRaport.kepribadian || 'B', teamwork: parsedRaport.teamwork || 'B', inisiatif: parsedRaport.inisiatif || 'B', fisik: parsedRaport.fisik || 'B'
+        });
+        setIsRaportOpen(true);
+    };
+
+    const handleRaportChange = (e) => {
+        const { name, value, type } = e.target;
+        setRaportData({ ...raportData, [name]: type === 'number' ? Number(value) : value });
+    };
+
+    const saveRaportForm = async (e) => {
+        e.preventDefault(); setIsSubmitting(true);
+        try {
+            const totAkad = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
+            const finalAvg = Math.round(totAkad / 5);
+
+            const { error } = await supabase.from('students').update({ data_raport: raportData, pendidikan_history: raportPendidikanList, nilai_bahasa: finalAvg, updated_at: new Date() }).eq('id', raportStudent.id);
+            if (error) throw error;
+            await logActivity(`Input raport akhir: ${raportStudent.nama_lengkap}`);
+            alert(`Raport disimpan. Nilai rata-rata final siswa ditetapkan menjadi ${finalAvg}.`); setIsRaportOpen(false); fetchStudents();
+        } catch (err) { alert('Gagal: ' + err.message); } finally { setIsSubmitting(false); }
+    };
+
+    // ── -------------------------- ──
+
+    const handleFlySubmit = async (e) => {
+        e.preventDefault();
+        if(!window.confirm(`Konfirmasi final: Siswa ${flyModal.nama_lengkap} akan diterbangkan pada tanggal ${flyDate}? Data akan diteruskan ke Keuangan.`)) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase.from('students').update({ tanggal_entri: flyDate, tahap_sekarang: 'SIAP BERANGKAT', status_alumni: 'AKTIF', updated_at: new Date() }).eq('id', flyModal.id);
+            if (error) throw error;
+            await logActivity(`Menerbangkan siswa ${flyModal.nama_lengkap} ke Jepang.`); await incrementPoint();
+            alert("Siswa berhasil diterbangkan! Data masuk ke Keuangan."); setFlyModal(null); fetchStudents();
+        } catch (err) { alert("Gagal: " + err.message); } finally { setIsSubmitting(false); }
+    };
+
     const updateStage = async (id, nama, newStage, successMsg) => {
         if (!window.confirm(`Pindahkan ${nama} ke tahap ${newStage}?`)) return;
         try {
             const { error } = await supabase.from('students').update({ tahap_sekarang: newStage, updated_at: new Date() }).eq('id', id);
             if (error) throw error; 
             if(successMsg) alert(successMsg); 
-            await logActivity(`Update status ${nama} ke ${newStage}`);
-            await incrementPoint();
-            fetchStudents();
+            await logActivity(`Update status ${nama} ke ${newStage}`); await incrementPoint(); fetchStudents();
         } catch (error) { alert("Gagal: " + error.message); }
     };
 
@@ -233,19 +358,18 @@ export default function DashboardReguler() {
         try {
             const { error } = await supabase.from('students').update({ tahap_sekarang: 'PRA_MENSETSU', perusahaan_tujuan: namaPerusahaan, updated_at: new Date() }).eq('id', id);
             if (error) throw error;
-            await logActivity(`Assign ${nama} ke Job Order: ${namaPerusahaan}`);
-            await incrementPoint();
-            fetchStudents();
+            await logActivity(`Assign ${nama} ke Job Order: ${namaPerusahaan}`); await incrementPoint(); fetchStudents();
         } catch (err) { alert(err.message); }
     };
 
     const filteredStudents = students.filter(s => (s.nama_lengkap || '').toLowerCase().includes(searchTerm.toLowerCase()) || (s.nik || '').includes(searchTerm));
-    const filteredJO = jobOrders.filter(j => (j.nama_perusahaan || '').toLowerCase().includes(searchTerm.toLowerCase()) || (j.nama_job || '').toLowerCase().includes(searchTerm.toLowerCase()));
-    const activeJONames = jobOrders.filter(j => j.status === 'OPEN').map(j => j.nama_perusahaan);
+    const filteredJO = jobOrders.filter(j => (j.perusahaan || '').toLowerCase().includes(searchTerm.toLowerCase()) || (j.bidang || '').toLowerCase().includes(searchTerm.toLowerCase()));
+    const activeJONames = jobOrders.filter(j => j.status === 'OPEN').map(j => j.perusahaan);
 
-    if (selectedJobOrder) {
-        return <JobOrderDetail jobOrder={selectedJobOrder} onBack={() => { setSelectedJobOrder(null); fetchJobOrders(); }} />;
-    }
+    const totalAkademikModal = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
+    const rataRataRaportModal = (totalAkademikModal / 5).toFixed(1);
+
+    if (selectedJobOrder) { return <JobOrderDetail jobOrder={selectedJobOrder} onBack={() => { setSelectedJobOrder(null); fetchJobOrders(); }} />; }
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
@@ -254,7 +378,7 @@ export default function DashboardReguler() {
             <aside style={{ width: '260px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '25px 20px', borderBottom: '1px solid #e2e8f0', background: brandNavy, color: 'white' }}>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Reguler & Rekrutmen</h2>
-                    <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', opacity: 0.8 }}>Pusat Pendaftaran & Job Matching</p>
+                    <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', opacity: 0.8 }}>Pusat Pendaftaran & Akademik</p>
                 </div>
 
                 <div style={{ padding: '15px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -266,16 +390,16 @@ export default function DashboardReguler() {
                 </div>
 
                 <nav style={{ padding: '20px 15px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginBottom: '5px' }}>FASE REGULER</div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginBottom: '5px' }}>FASE REGULER & DIKLAT</div>
                     <button onClick={() => setActiveTab('PENDAFTARAN')} style={activeTab === 'PENDAFTARAN' ? activeMenuS : inactiveMenuS}><Users size={18} /> Pendaftaran Baru</button>
                     <button onClick={() => setActiveTab('SELEKSI')} style={activeTab === 'SELEKSI' ? activeMenuS : inactiveMenuS}><Activity size={18} /> Seleksi & MCU 1</button>
-                    <button onClick={() => setActiveTab('DIKLAT')} style={activeTab === 'DIKLAT' ? activeMenuS : inactiveMenuS}><FileText size={18} /> Kelas Reguler (Diklat)</button>
+                    <button onClick={() => setActiveTab('DIKLAT')} style={activeTab === 'DIKLAT' ? activeMenuS : inactiveMenuS}><FileText size={18} /> Kelas Pendidikan (Diklat)</button>
                     <button onClick={() => setActiveTab('PEMANGGILAN')} style={activeTab === 'PEMANGGILAN' ? activeMenuS : inactiveMenuS}><PhoneOutgoing size={18} /> Daftar Pemanggilan</button>
                     
                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>FASE REKRUTMEN</div>
                     <button onClick={() => setActiveTab('JOB_ORDER')} style={activeTab === 'JOB_ORDER' ? activeMenuS : inactiveMenuS}><Briefcase size={18} /> Manajemen Job Order</button>
                     <button onClick={() => setActiveTab('MATCHING')} style={activeTab === 'MATCHING' ? activeMenuS : inactiveMenuS}><UserCheck size={18} /> Proses Wawancara</button>
-                    <button onClick={() => setActiveTab('PASCA_INTERVIEW')} style={activeTab === 'PASCA_INTERVIEW' ? activeMenuS : inactiveMenuS}><FileCheck size={18} /> MCU 2 & Pemberkasan</button>
+                    <button onClick={() => setActiveTab('PASCA_INTERVIEW')} style={activeTab === 'PASCA_INTERVIEW' ? activeMenuS : inactiveMenuS}><FileCheck size={18} /> Pasca Lolos Wawancara</button>
                 </nav>
 
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -294,47 +418,64 @@ export default function DashboardReguler() {
                         <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900 }}>
                             {activeTab === 'PENDAFTARAN' && (isFormOpen ? (editingId ? 'Edit Data Pendaftar' : 'Form Pendaftaran Baru') : 'Manajemen Pendaftar')}
                             {activeTab === 'SELEKSI' && 'Proses Seleksi & Kesehatan'}
-                            {activeTab === 'DIKLAT' && 'Monitoring Pendidikan Siswa'}
+                            {activeTab === 'DIKLAT' && 'Kelas Pendidikan (Reguler & Diklat)'}
                             {activeTab === 'PEMANGGILAN' && 'Daftar Pemanggilan Siswa'}
                             {activeTab === 'JOB_ORDER' && 'Manajemen Job Order (Jepang)'}
                             {activeTab === 'MATCHING' && 'Matching & Proses Wawancara'}
-                            {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara'}
+                            {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara (Dokumen & Terbang)'}
                         </h1>
                         <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem' }}>
+                            {activeTab === 'DIKLAT' && 'Input absensi, evaluasi harian, dan penerbitan raport/sertifikat siswa.'}
                             {activeTab === 'PEMANGGILAN' && 'Pantau dan panggil siswa yang Available (siap interview) atau Tanggungan.'}
                             {activeTab === 'MATCHING' && 'Siswa berstatus AVAILABLE siap dimasukkan ke Job Order.'}
-                            {activeTab === 'PASCA_INTERVIEW' && 'Siswa MATCHED. Selesaikan MCU 2 lalu lempar ke Divisi Dokumen.'}
-                            {activeTab === 'DIKLAT' && 'Lihat nilai akademik siswa. Input/perubahan nilai hanya dilakukan oleh Div. Pendidikan.'}
+                            {activeTab === 'PASCA_INTERVIEW' && 'Siswa MATCHED diproses dokumennya hingga Input Tanggal Entri (Berangkat ke Jepang).'}
                             {['PENDAFTARAN','SELEKSI','JOB_ORDER'].includes(activeTab) && 'Kelola data, evaluasi, dan pantau perkembangan siswa.'}
                         </p>
                     </div>
                     
                     {!isFormOpen && (
-                        <div style={{ display: 'flex', gap: '15px' }}>
+                        <div style={{ display: 'flex', gap: '10px' }}>
                             <div style={{ position: 'relative' }}>
                                 <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                                <input type="text" placeholder="Cari..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px' }} />
+                                <input type="text" placeholder="Cari..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' }} />
                             </div>
+                            {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsCloneModalOpen(true)} style={{...btnPrimary, background: '#f59e0b', color: '#fff'}}><RefreshCw size={18}/> Re-Entry (Clone NIK)</button>}
                             {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsFormOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Pendaftar</button>}
-                            {activeTab === 'JOB_ORDER' && <button onClick={() => setIsAddJOOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Job Order</button>}
+                            
+                            {activeTab === 'JOB_ORDER' && (<>
+                                <button onClick={() => navigate('/master-kumiai')} style={{...btnPrimary, background: '#8b5cf6'}}><Building size={18}/> Master Kumiai</button>
+                                <button onClick={() => navigate('/master-kaisha')} style={{...btnPrimary, background: '#ec4899'}}><Building2 size={18}/> Master Kaisha</button>
+                                <button onClick={() => setIsAddJOOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Job Order</button>
+                            </>)}
                         </div>
                     )}
                 </header>
 
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
                     
-                    {/* ================== FORM PENDAFTARAN ================== */}
+                    {/* ================== FORM PENDAFTARAN (ADA DROPDOWN PROGRAM) ================== */}
                     {isFormOpen && activeTab === 'PENDAFTARAN' && (
                         <div style={{ background: 'white', padding: '35px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderTop: `5px solid ${brandNavy}`, marginBottom: '40px' }}>
                             <form onSubmit={handleSubmit}>
-                                <h3 style={sectionTitle}>I. Identitas Dasar</h3>
+                                <h3 style={sectionTitle}>I. Klasifikasi & Identitas Dasar</h3>
                                 
-                                <div style={{ marginBottom: '20px' }}>
-                                    <label style={{...labelForm, color: '#10b981'}}>🎯 Minat Bidang (Tujuan Job Kaisha) *</label>
-                                    <select name="minat_bidang" value={formData.minat_bidang} onChange={handleChange} required style={{...inputForm, border: '2px solid #10b981', background: '#ecfdf5', width: '100%'}}>
-                                        <option value="">-- Pilih Minat Bidang Pekerjaan --</option>
-                                        {masterBidang.map(b => <option key={b.nama_bidang} value={b.nama_bidang}>{b.nama_bidang}</option>)}
-                                    </select>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                                    <div>
+                                        <label style={{...labelForm, color: brandNavy}}>🎓 Kategori Program *</label>
+                                        <select name="program" value={formData.program} onChange={handleChange} required style={{...inputForm, border: `2px solid ${brandNavy}`, background: '#eff6ff', fontWeight: 800}}>
+                                            <option value="Pemagangan (Jisshusei)">Pemagangan (Jisshusei)</option>
+                                            <option value="Tokutei Ginou (TG)">Tokutei Ginou (TG)</option>
+                                            <option value="Engineering (Gijinkoku)">Engineering (Gijinkoku)</option>
+                                            <option value="Visa Pelajar (Ryuugaku)">Visa Pelajar (Ryuugaku)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{...labelForm, color: '#10b981'}}>🎯 Minat Bidang Pekerjaan *</label>
+                                        <select name="minat_bidang" value={formData.minat_bidang} onChange={handleChange} required style={{...inputForm, border: '2px solid #10b981', background: '#ecfdf5'}}>
+                                            <option value="">-- Pilih Bidang (Tujuan Kaisha) --</option>
+                                            {masterBidang.map(b => <option key={b.nama_bidang} value={b.nama_bidang}>{b.nama_bidang}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '40px' }}>
@@ -405,16 +546,21 @@ export default function DashboardReguler() {
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                                     <tr>
                                         <th style={thStyle}>Identitas Siswa</th>
-                                        <th style={thStyle}>{['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? 'Perusahaan Tujuan' : 'Status Tahapan'}</th>
+                                        <th style={thStyle}>
+                                            {activeTab === 'DIKLAT' ? 'Nilai Akademik & Tes Terakhir' : ['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? 'Perusahaan Tujuan' : 'Status Tahapan'}
+                                        </th>
                                         {activeTab === 'SELEKSI' && <th style={thStyle}>Status MCU</th>}
-                                        {activeTab === 'DIKLAT' && <th style={thStyle}>Nilai Rata-rata</th>}
+                                        {activeTab === 'DIKLAT' && <th style={thStyle}>Status Kelas</th>}
                                         {activeTab === 'PEMANGGILAN' && <th style={thStyle}>Keterangan Panggilan</th>}
                                         {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <th style={thStyle}>Tahap Seleksi</th>}
                                         <th style={{...thStyle, textAlign: 'center'}}>Aksi / Update Alur</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {isLoading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}><Loader2 size={30} className="animate-spin" style={{ margin: '0 auto 10px auto' }} /> Memuat data...</td></tr> : filteredStudents.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontWeight: 600 }}>Tidak ada data siswa di tahap ini.</td></tr> : filteredStudents.map((student) => (
+                                    {isLoading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}><Loader2 size={30} className="animate-spin" style={{ margin: '0 auto 10px auto' }} /> Memuat data...</td></tr> : filteredStudents.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontWeight: 600 }}>Tidak ada data siswa di tahap ini.</td></tr> : filteredStudents.map((student) => {
+                                        const lastRecord = student.nilai_history.length > 0 ? student.nilai_history[student.nilai_history.length - 1] : null;
+
+                                        return (
                                         <tr key={student.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                             <td style={tdStyle}>
                                                 <div style={{ fontWeight: 800, color: '#1e293b' }}>{student.nama_lengkap}</div>
@@ -429,15 +575,25 @@ export default function DashboardReguler() {
                                                 </div>
                                             </td>
 
-                                            {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? (
+                                            {activeTab === 'DIKLAT' ? (
+                                                <td style={tdStyle}>
+                                                    <span style={{ fontWeight: 800, fontSize: '1.2rem', color: brandNavy }}>{student.nilai_bahasa || 0}</span> / 100
+                                                    {lastRecord ? (
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}><b>Tes Terakhir:</b> {lastRecord.jenis_tes} ({lastRecord.nilai})</div>
+                                                    ) : <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', marginTop: '4px' }}>Belum ada riwayat tes</div>}
+                                                </td>
+                                            ) : ['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? (
                                                 <td style={{...tdStyle, fontWeight: 700, color: student.perusahaan_tujuan ? '#ec4899' : '#94a3b8'}}>{student.perusahaan_tujuan || 'Belum Di-Assign'}</td>
                                             ) : (
-                                                <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3' }}>{student.tahap_sekarang}</span></td>
+                                                <td style={tdStyle}>
+                                                    <div style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', display: 'inline-block', marginBottom: '5px' }}>{student.tahap_sekarang}</div>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#059669' }}>{student.program}</div>
+                                                </td>
                                             )}
                                             
                                             {activeTab === 'SELEKSI' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: student.medical_checkup_status === 'FIT' ? '#dcfce7' : (student.medical_checkup_status === 'UNFIT' ? '#fee2e2' : '#fef3c7'), color: student.medical_checkup_status === 'FIT' ? '#166534' : (student.medical_checkup_status === 'UNFIT' ? '#991b1b' : '#92400e') }}>{student.medical_checkup_status || 'PENDING'}</span></td>}
                                             
-                                            {activeTab === 'DIKLAT' && <td style={tdStyle}><span style={{ fontWeight: 800, fontSize: '1.1rem', color: brandNavy }}>{student.nilai_bahasa || '-'}</span> / 100</td>}
+                                            {activeTab === 'DIKLAT' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', display: 'inline-block', marginBottom: '5px' }}>{student.tahap_sekarang}</span></td>}
                                             
                                             {activeTab === 'PEMANGGILAN' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: student.status_akhir === 'BELUM DAPAT JOB' ? '#fee2e2' : '#f1f5f9', color: student.status_akhir === 'BELUM DAPAT JOB' ? '#991b1b' : '#475569' }}>{student.status_akhir === 'BELUM DAPAT JOB' ? 'Tanggungan (Belum Dapat Job)' : 'Menunggu Job (Available)'}</span></td>}
                                             {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <td style={tdStyle}><div style={{...badgeS, background: '#eff6ff', color: '#2563eb'}}>{student.tahap_sekarang}</div></td>}
@@ -448,9 +604,14 @@ export default function DashboardReguler() {
                                                     {activeTab === 'SELEKSI' && (<><button onClick={() => openEvalModal(student)} style={actionBtn('#f59e0b')} title="Input MCU"><ClipboardList size={18}/></button><button onClick={() => handleHubungiSiswa(student.nama_lengkap, student.telepon, 'SELEKSI')} style={{...actionBtn('#10b981'), background: '#ecfdf5'}} title="Panggil via WA"><MessageCircle size={18} color="#10b981"/></button><button onClick={() => updateStage(student.id, student.nama_lengkap, 'PENDIDIKAN REGULER', 'Masuk Kelas')} style={{...btnAction, background: brandNavy, color: 'white'}}>Masuk Kelas</button></>)}
                                                     
                                                     {activeTab === 'DIKLAT' && (
-                                                        <button onClick={() => updateStage(student.id, student.nama_lengkap, 'AVAILABLE', 'Siswa disetujui untuk mulai Job Matching (Available)')} style={{...btnAction, background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', gap: '5px'}}>
-                                                            <CheckCircle size={16}/> Set Siap Matching
-                                                        </button>
+                                                        <>
+                                                            <button onClick={() => openEduEvalModal(student)} style={actionBtn('#f59e0b')} title="Input Evaluasi Harian"><Edit3 size={16}/></button>
+                                                            <button onClick={() => openRaportModal(student)} style={actionBtn('#8b5cf6')} title="Input Raport & History"><BookA size={16}/></button>
+                                                            <button onClick={() => window.open(`/print-sertifikat/${student.id}`, '_blank')} style={actionBtn('#ec4899')} title="Cetak Sertifikat Lulus"><Printer size={16}/></button>
+                                                            <button onClick={() => updateStage(student.id, student.nama_lengkap, 'AVAILABLE', 'Siswa disetujui untuk mulai Job Matching (Available)')} style={{...btnAction, background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', gap: '5px'}}>
+                                                                <CheckCircle size={16}/> Lulus (Siap Match)
+                                                            </button>
+                                                        </>
                                                     )}
 
                                                     {activeTab === 'PEMANGGILAN' && (<button onClick={() => handleHubungiSiswa(student.nama_lengkap, student.telepon, 'INTERVIEW')} style={{...btnAction, background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', gap: '5px'}}><MessageCircle size={16}/> Panggil Interview</button>)}
@@ -486,7 +647,7 @@ export default function DashboardReguler() {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    )})}
                                 </tbody>
                             </table>
                         </div>
@@ -508,8 +669,11 @@ export default function DashboardReguler() {
                                 <tbody>
                                     {isLoading ? <tr><td colSpan="5" style={{padding:'40px', textAlign:'center'}}><Loader2 className="animate-spin" style={{margin:'0 auto'}}/></td></tr> : filteredJO.map(j => (
                                         <tr key={j.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{...tdStyle, fontWeight: 800, color: '#1e293b'}}>{j.nama_perusahaan}</td>
-                                            <td style={tdStyle}>{j.bidang_pekerjaan}</td>
+                                            <td style={{...tdStyle, fontWeight: 800, color: '#1e293b'}}>
+                                                {j.perusahaan}
+                                                <div style={{fontSize:'0.75rem', color:'#64748b', fontWeight: 600, marginTop: '2px'}}>{j.kumiai}</div>
+                                            </td>
+                                            <td style={tdStyle}>{j.bidang}</td>
                                             <td style={{...tdStyle, fontWeight: 900, color: brandNavy}}>{j.kuota} Orang</td>
                                             <td style={tdStyle}><span style={{...badgeS, background: j.status === 'OPEN' ? '#dcfce7' : '#fee2e2', color: j.status === 'OPEN' ? '#166534' : '#991b1b'}}>{j.status}</span></td>
                                             <td style={{...tdStyle, textAlign: 'center'}}>
@@ -534,9 +698,99 @@ export default function DashboardReguler() {
                     )}
                 </div>
 
-                {/* ── MODAL ── */}
+                {/* ── MODAL EVALUASI HARIAN (EDUKASI) ── */}
+                {isEduEvalOpen && eduEvalStudent && (
+                    <div style={modalOverlay}>
+                        <div style={modalContent}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
+                                <div><h3 style={{ margin: 0, fontWeight: 900 }}>Evaluasi Pembelajaran</h3><p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{eduEvalStudent.nama_lengkap}</p></div>
+                                <button onClick={() => setIsEduEvalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
+                            </div>
+                            <form onSubmit={handleEduEvalSubmit}>
+                                <div style={{ marginBottom: '15px' }}><label style={labelForm}>Jenis Tes</label><select required style={inputForm} value={eduEvalForm.jenis_tes} onChange={(e) => setEduEvalForm({...eduEvalForm, jenis_tes: e.target.value})}><option value="UJIAN BAB">Ujian Bab (Harian)</option><option value="TRYOUT JLPT">Tryout JLPT / JFT</option><option value="UJIAN FISIK">Ujian Fisik / FMD</option><option value="SIKAP ATTITUDE">Penilaian Sikap</option></select></div>
+                                <div style={{ marginBottom: '15px' }}><label style={labelForm}>Nilai (0-100)</label><input type="number" min="0" max="100" required style={{...inputForm, fontSize: '1.2rem', fontWeight: 800, color: brandNavy}} value={eduEvalForm.nilai} onChange={(e) => setEduEvalForm({...eduEvalForm, nilai: e.target.value})} /></div>
+                                <div style={{ marginBottom: '25px' }}><label style={labelForm}>Catatan Instruktur</label><textarea rows="3" style={{...inputForm, resize: 'vertical'}} value={eduEvalForm.catatan} onChange={(e) => setEduEvalForm({...eduEvalForm, catatan: e.target.value})}></textarea></div>
+                                <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>Simpan Evaluasi</button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── MODAL RAPORT AKHIR & HISTORY PENDIDIKAN ── */}
+                {isRaportOpen && raportStudent && (
+                    <div style={modalOverlay}>
+                        <form onSubmit={saveRaportForm} style={{...modalContent, width: '900px', maxHeight: '90vh', overflowY: 'auto'}}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px', position: 'sticky', top: '-30px', background: 'white', zIndex: 10 }}>
+                                <div><h3 style={{ margin: 0, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}><Award size={22} color={brandNavy}/> Input Raport Akhir & History</h3><p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Siswa: <span style={{color: '#1e293b'}}>{raportStudent.nama_lengkap}</span></p></div>
+                                <button type="button" onClick={() => setIsRaportOpen(false)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18}/></button>
+                            </div>
+                            
+                            <div style={{ padding: '0 5px' }}>
+                                {/* SEGMEN 1: NILAI AKADEMIK */}
+                                <h4 style={sectionTitle}><BrainCircuit size={18}/> Nilai Akademik Bahasa Jepang</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '15px' }}>
+                                    <div><label style={labelForm}>Kotoba</label><input type="number" required min="0" max="100" style={inputForm} name="kotoba" value={raportData.kotoba} onChange={handleRaportChange} /></div>
+                                    <div><label style={labelForm}>Bunpo</label><input type="number" required min="0" max="100" style={inputForm} name="bunpo" value={raportData.bunpo} onChange={handleRaportChange} /></div>
+                                    <div><label style={labelForm}>Dokkai</label><input type="number" required min="0" max="100" style={inputForm} name="dokkai" value={raportData.dokkai} onChange={handleRaportChange} /></div>
+                                    <div><label style={labelForm}>Choukai</label><input type="number" required min="0" max="100" style={inputForm} name="choukai" value={raportData.choukai} onChange={handleRaportChange} /></div>
+                                    <div><label style={labelForm}>Kaiwa</label><input type="number" required min="0" max="100" style={inputForm} name="kaiwa" value={raportData.kaiwa} onChange={handleRaportChange} /></div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '20px', background: '#f8fafc', padding: '15px 20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
+                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>JUMLAH NILAI</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b' }}>{Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa)}</div></div>
+                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>RATA-RATA FINAL</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: brandNavy }}>{((Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa)) / 5).toFixed(1)}</div></div>
+                                </div>
+
+                                {/* SEGMEN 2: NILAI SIKAP / KARAKTER */}
+                                <h4 style={sectionTitle}><Activity size={18}/> Nilai Sikap & Kepribadian</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
+                                    <div><label style={labelForm}>Kecerdasan</label><select style={inputForm} name="kecerdasan" value={raportData.kecerdasan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Kedisiplinan</label><select style={inputForm} name="kedisiplinan" value={raportData.kedisiplinan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Kerapihan</label><select style={inputForm} name="kerapihan" value={raportData.kerapihan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Perilaku</label><select style={inputForm} name="perilaku" value={raportData.perilaku} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Kepribadian</label><select style={inputForm} name="kepribadian" value={raportData.kepribadian} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Team Work</label><select style={inputForm} name="teamwork" value={raportData.teamwork} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Inisiatif</label><select style={inputForm} name="inisiatif" value={raportData.inisiatif} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                    <div><label style={labelForm}>Fisik</label><select style={inputForm} name="fisik" value={raportData.fisik} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
+                                </div>
+                            </div>
+                            <div style={{ position: 'sticky', bottom: '-30px', background: 'white', padding: '15px 0 0 0', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                <button type="button" onClick={() => setIsRaportOpen(false)} style={{ padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 700, borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
+                                <button type="submit" disabled={isSubmitting} style={{ padding: '10px 25px', background: brandNavy, border: 'none', color: 'white', fontWeight: 800, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><Save size={18}/> Simpan Raport</button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* ── MODAL CLONE NIK / RE-ENTRY ── */}
+                {isCloneModalOpen && (
+                    <div style={modalOverlay}>
+                        <form onSubmit={handleCloneSubmit} style={modalContent}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, color: '#1e293b', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <RefreshCw size={20} color="#f59e0b" /> Proses Re-Entry TG
+                                    </h3>
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Gandakan biodata alumni masa lalu tanpa merusak histori aslinya.</p>
+                                </div>
+                                <button type="button" onClick={() => setIsCloneModalOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><X size={20} /></button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '25px' }}>
+                                <div>
+                                    <label style={labelForm}>Masukkan NIK Alumni Lama *</label>
+                                    <input type="text" required value={cloneNik} onChange={(e) => setCloneNik(e.target.value)} style={{...inputForm, border: '2px solid #f59e0b', fontSize: '1.2rem', fontWeight: 800, textAlign: 'center', letterSpacing: '2px'}} placeholder="16 Digit NIK" />
+                                </div>
+                            </div>
+                            <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: '#f59e0b', color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                                {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : <><Search size={18} /> Cari & Gandakan Data</>}
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                {/* ── MODAL UNGGAH FOTO ── */}
                 {uploadModalId && ( <div style={modalOverlay}><div style={modalContent}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h3 style={{ margin: 0, color: '#1e293b', fontWeight: 800 }}>Unggah Foto Siswa</h3><button onClick={() => setUploadModalId(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', padding: '5px', cursor: 'pointer' }}><X size={20} /></button></div><RegistrationPhotoUpload studentId={uploadModalId} onUploadSuccess={() => { setUploadModalId(null); fetchStudents(); }} /></div></div> )}
                 
+                {/* ── MODAL EVALUASI MCU ── */}
                 {evalModal && activeTab === 'SELEKSI' && ( 
                     <div style={modalOverlay}>
                         <form onSubmit={handleEvalSubmit} style={modalContent}>
@@ -564,6 +818,7 @@ export default function DashboardReguler() {
                     </div> 
                 )}
 
+                {/* ── MODAL ADD JOB ORDER ── */}
                 {isAddJOOpen && (
                     <div style={modalOverlay}>
                         <form onSubmit={handleAddJO} style={modalContent}>
@@ -571,11 +826,51 @@ export default function DashboardReguler() {
                                 <h3 style={{ margin: 0, fontWeight: 900 }}>Buat Job Order Baru</h3>
                                 <button type="button" onClick={() => setIsAddJOOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
                             </div>
-                            <div style={{ marginBottom: '15px' }}><label style={labelForm}>Nama Perusahaan Klien</label><input required style={inputForm} value={joForm.nama_perusahaan} onChange={e => setJoForm({...joForm, nama_perusahaan: e.target.value})} placeholder="Contoh: Toyota Corp" /></div>
-                            <div style={{ marginBottom: '15px' }}><label style={labelForm}>Bidang Pekerjaan</label><input required style={inputForm} value={joForm.bidang_pekerjaan} onChange={e => setJoForm({...joForm, bidang_pekerjaan: e.target.value})} placeholder="Contoh: Konstruksi Besi" /></div>
-                            <div style={{ marginBottom: '15px' }}><label style={labelForm}>Kuota Siswa Dibutuhkan</label><input type="number" required min="1" style={inputForm} value={joForm.kuota} onChange={e => setJoForm({...joForm, kuota: e.target.value})} /></div>
-                            <div style={{ marginBottom: '25px' }}><label style={labelForm}>Keterangan Syarat (Opsional)</label><textarea rows="3" style={{...inputForm, resize: 'vertical'}} value={joForm.keterangan} onChange={e => setJoForm({...joForm, keterangan: e.target.value})} placeholder="Syarat fisik, umur, dll"></textarea></div>
-                            <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>{isSubmitting ? 'Memproses...' : 'Publikasi Job Order'}</button>
+                            
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={labelForm}>Nama Perusahaan Klien (Kaisha)</label>
+                                <select required style={inputForm} value={joForm.perusahaan} onChange={e => {
+                                    const val = e.target.value;
+                                    const kaisha = masterKaisha.find(k => k.nama_perusahaan === val);
+                                    setJoForm({...joForm, perusahaan: val, kumiai: kaisha?.nama_kumiai || joForm.kumiai});
+                                }}>
+                                    <option value="">-- Pilih Perusahaan --</option>
+                                    {masterKaisha.map((k, i) => <option key={i} value={k.nama_perusahaan}>{k.nama_perusahaan}</option>)}
+                                </select>
+                            </div>
+
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={labelForm}>Nama Kumiai</label>
+                                <select required style={inputForm} value={joForm.kumiai} onChange={e => setJoForm({...joForm, kumiai: e.target.value})}>
+                                    <option value="">-- Pilih Kumiai --</option>
+                                    {masterKumiai.map((k, i) => {
+                                        const val = k.nama_kumiai || k.kumiai || k.nama || Object.values(k)[1];
+                                        return <option key={i} value={val}>{val}</option>;
+                                    })}
+                                </select>
+                            </div>
+
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={labelForm}>Bidang Pekerjaan</label>
+                                <select required style={inputForm} value={joForm.bidang} onChange={e => setJoForm({...joForm, bidang: e.target.value})}>
+                                    <option value="">-- Pilih Bidang Pekerjaan --</option>
+                                    {masterBidang.map((b, i) => <option key={i} value={b.nama_bidang}>{b.nama_bidang}</option>)}
+                                </select>
+                            </div>
+
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={labelForm}>Kuota Siswa Dibutuhkan</label>
+                                <input type="number" required min="1" style={inputForm} value={joForm.kuota} onChange={e => setJoForm({...joForm, kuota: e.target.value})} />
+                            </div>
+
+                            <div style={{ marginBottom: '25px' }}>
+                                <label style={labelForm}>Keterangan Syarat (Opsional)</label>
+                                <textarea rows="3" style={{...inputForm, resize: 'vertical'}} value={joForm.catatan} onChange={e => setJoForm({...joForm, catatan: e.target.value})} placeholder="Syarat fisik, umur, dll"></textarea>
+                            </div>
+
+                            <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>
+                                {isSubmitting ? 'Memproses...' : 'Publikasi Job Order'}
+                            </button>
                         </form>
                     </div>
                 )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
     BookOpen, GraduationCap, Search, Loader2, UserCircle, Edit3, X, Award, 
-    BarChart2, BookA, BrainCircuit, Activity, Save, Trash2, Printer
+    BarChart2, BookA, BrainCircuit, Activity, Save, Trash2, Printer, Archive, Download
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -18,6 +18,10 @@ export default function DashboardPendidikan() {
     const [searchTerm, setSearchTerm] = useState('');
     const [userProfile, setUserProfile] = useState(null);
     const [myPoints, setMyPoints] = useState(0);
+
+    // ── STATE FILTER BUKU INDUK ──
+    const [filterTahun, setFilterTahun] = useState('');
+    const [filterProgram, setFilterProgram] = useState('');
 
     // ── STATE MODAL EVALUASI ──
     const [isEvalOpen, setIsEvalOpen] = useState(false);
@@ -66,18 +70,20 @@ export default function DashboardPendidikan() {
     const fetchStudents = async () => {
         setIsLoading(true);
         try {
-            let stageFilter = [];
-            if (activeTab === 'KELAS_REGULER') stageFilter = ['PENDIDIKAN REGULER'];
-            if (activeTab === 'KELAS_DIKLAT') stageFilter = ['PENDIDIKAN DIKLAT'];
-            if (activeTab === 'REKAP_NILAI') stageFilter = ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT', 'AVAILABLE', 'ALUMNI', 'SIAP BERANGKAT'];
+            let query = supabase.from('students').select('*').order('nama_lengkap', { ascending: true });
 
-            // PERBAIKAN: BENAR-BENAR MENGGUNAKAN BINTANG (*) AGAR ERROR 400 HILANG
-            const { data, error } = await supabase
-                .from('students')
-                .select('*')
-                .in('tahap_sekarang', stageFilter)
-                .order('nama_lengkap', { ascending: true });
+            if (activeTab === 'KELAS_REGULER') {
+                query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER']);
+            } else if (activeTab === 'KELAS_DIKLAT') {
+                query = query.in('tahap_sekarang', ['PENDIDIKAN DIKLAT']);
+            } else if (activeTab === 'REKAP_NILAI') {
+                query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT', 'AVAILABLE', 'ALUMNI', 'SIAP BERANGKAT']);
+            } else if (activeTab === 'BUKU_INDUK') {
+                // Tarik semua siswa yang sudah masuk tahap edukasi ke atas (kecuali Registrasi & Seleksi)
+                query = query.neq('tahap_sekarang', 'REGISTRASI').neq('tahap_sekarang', 'SELEKSI AWAL');
+            }
 
+            const { data, error } = await query;
             if (error) throw error;
             
             const formattedData = (data || []).map(s => ({
@@ -110,6 +116,42 @@ export default function DashboardPendidikan() {
             await supabase.from('employees').update({ poin_pendaftaran: newPoint }).eq('id', user.id);
             setMyPoints(newPoint);
         } catch (err) {}
+    };
+
+    // ── FITUR EKSPOR KE EXCEL/CSV ──
+    const handleExportCSV = () => {
+        const headers = ['Nama Lengkap', 'NIK', 'Program', 'Tahun', 'Status Pipeline', 'Nilai Rata-Rata', 'Kotoba', 'Bunpo', 'Dokkai', 'Choukai', 'Kaiwa', 'Sikap', 'Disiplin', 'Teamwork', 'Kecerdasan'];
+        
+        const rows = filteredBukuInduk.map(s => {
+            const r = s.data_raport || {};
+            const tahun = new Date(s.created_at).getFullYear();
+            return [
+                `"${s.nama_lengkap}"`,
+                `"${s.nik || '-'}"`,
+                `"${s.program || '-'}"`,
+                `"${tahun}"`,
+                `"${s.tahap_sekarang}"`,
+                s.nilai_bahasa || 0,
+                r.kotoba || 0,
+                r.bunpo || 0,
+                r.dokkai || 0,
+                r.choukai || 0,
+                r.kaiwa || 0,
+                `"${r.perilaku || '-'}"`,
+                `"${r.kedisiplinan || '-'}"`,
+                `"${r.teamwork || '-'}"`,
+                `"${r.kecerdasan || '-'}"`
+            ].join(',');
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + "\n" + rows.join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Buku_Induk_Nilai_UJC_${new Date().getFullYear()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const openEvalModal = (student) => {
@@ -177,13 +219,21 @@ export default function DashboardPendidikan() {
         e.preventDefault();
         setIsSubmitting(true);
         try {
+            const totAkad = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
+            const finalAvg = Math.round(totAkad / 5);
+
             const { error } = await supabase.from('students')
-                .update({ data_raport: raportData, pendidikan_history: pendidikanList, updated_at: new Date() })
+                .update({ 
+                    data_raport: raportData, 
+                    pendidikan_history: pendidikanList, 
+                    nilai_bahasa: finalAvg,
+                    updated_at: new Date() 
+                })
                 .eq('id', selectedStudent.id);
 
             if (error) throw error;
             await logActivity(`Update raport & history pendidikan: ${selectedStudent.nama_lengkap}`);
-            alert('Data Raport & History Pendidikan berhasil disimpan!');
+            alert(`Data Raport disimpan. Rata-rata akhir siswa ditetapkan menjadi ${finalAvg}.`);
             setIsRaportOpen(false);
             fetchStudents();
         } catch (err) { alert('Gagal menyimpan: ' + err.message); } finally { setIsSubmitting(false); }
@@ -200,8 +250,19 @@ export default function DashboardPendidikan() {
     };
 
     const filteredStudents = students.filter(s => s.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()));
-    const totalAkademik = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
-    const rataRataRaport = (totalAkademik / 5).toFixed(1);
+    
+    // Khusus Untuk Filter Buku Induk
+    const uniqueTahun = [...new Set(students.map(s => new Date(s.created_at).getFullYear()))].sort((a,b) => b-a);
+    const uniqueProgram = [...new Set(students.map(s => s.program).filter(Boolean))].sort();
+
+    const filteredBukuInduk = filteredStudents.filter(s => {
+        const tahunMatch = filterTahun ? new Date(s.created_at).getFullYear().toString() === filterTahun : true;
+        const programMatch = filterProgram ? s.program === filterProgram : true;
+        return tahunMatch && programMatch;
+    });
+
+    const totalAkademikModal = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
+    const rataRataRaportModal = (totalAkademikModal / 5).toFixed(1);
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
@@ -211,9 +272,13 @@ export default function DashboardPendidikan() {
                     <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', opacity: 0.8 }}>Akademik & Karakter</p>
                 </div>
                 <nav style={{ padding: '20px 15px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginBottom: '5px' }}>AKADEMIK AKTIF</div>
                     <button onClick={() => setActiveTab('KELAS_REGULER')} style={activeTab === 'KELAS_REGULER' ? activeMenuS : inactiveMenuS}><BookOpen size={18} /> Kelas Reguler (Dasar)</button>
                     <button onClick={() => setActiveTab('KELAS_DIKLAT')} style={activeTab === 'KELAS_DIKLAT' ? activeMenuS : inactiveMenuS}><GraduationCap size={18} /> Kelas Diklat (Pematangan)</button>
-                    <button onClick={() => setActiveTab('REKAP_NILAI')} style={activeTab === 'REKAP_NILAI' ? activeMenuS : inactiveMenuS}><BarChart2 size={18} /> Rekap Nilai Siswa</button>
+                    <button onClick={() => setActiveTab('REKAP_NILAI')} style={activeTab === 'REKAP_NILAI' ? activeMenuS : inactiveMenuS}><BarChart2 size={18} /> Evaluasi Kartu Siswa</button>
+                    
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>ARSIP & PEMBUKUAN</div>
+                    <button onClick={() => setActiveTab('BUKU_INDUK')} style={activeTab === 'BUKU_INDUK' ? activeMenuS : inactiveMenuS}><Archive size={18} /> Buku Induk Nilai</button>
                 </nav>
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
@@ -231,18 +296,102 @@ export default function DashboardPendidikan() {
                 <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
                         <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: 0, fontWeight: 900 }}>
-                            {activeTab === 'KELAS_REGULER' ? 'Manajemen Kelas Reguler' : activeTab === 'KELAS_DIKLAT' ? 'Manajemen Kelas Diklat' : 'Rekapitulasi Evaluasi Siswa'}
+                            {activeTab === 'KELAS_REGULER' ? 'Manajemen Kelas Reguler' : 
+                             activeTab === 'KELAS_DIKLAT' ? 'Manajemen Kelas Diklat' : 
+                             activeTab === 'REKAP_NILAI' ? 'Rekapitulasi Evaluasi Siswa' : 'Buku Induk & Pembukuan Raport'}
                         </h1>
-                        <p style={{ color: '#64748b', margin: '5px 0 0 0' }}>Input absensi, ujian harian, dan pencetakan raport akhir siswa.</p>
+                        <p style={{ color: '#64748b', margin: '5px 0 0 0' }}>
+                            {activeTab === 'BUKU_INDUK' ? 'Arsip seluruh nilai dan data akademik siswa lintas angkatan.' : 'Input absensi, ujian harian, dan pencetakan raport akhir siswa.'}
+                        </p>
                     </div>
-                    <div style={{ position: 'relative' }}>
-                        <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                        <input type="text" placeholder="Cari Nama Siswa..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px' }} />
+                    
+                    <div style={{ display: 'flex', gap: '15px' }}>
+                        <div style={{ position: 'relative' }}>
+                            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
+                            <input type="text" placeholder="Cari Nama Siswa..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px' }} />
+                        </div>
+                        {activeTab === 'BUKU_INDUK' && (
+                            <button onClick={handleExportCSV} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Download size={18}/> Ekspor Excel/CSV
+                            </button>
+                        )}
                     </div>
                 </header>
 
+                {activeTab === 'BUKU_INDUK' && (
+                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '5px', display: 'block' }}>Tahun Masuk</label>
+                            <select value={filterTahun} onChange={e => setFilterTahun(e.target.value)} style={inputS}>
+                                <option value="">-- Semua Tahun --</option>
+                                {uniqueTahun.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '5px', display: 'block' }}>Kategori Program</label>
+                            <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} style={inputS}>
+                                <option value="">-- Semua Program --</option>
+                                {uniqueProgram.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                )}
+
                 <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {activeTab !== 'REKAP_NILAI' ? (
+                    
+                    {/* BUKU INDUK TAMPILAN TABEL */}
+                    {activeTab === 'BUKU_INDUK' ? (
+                        <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
+                                <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                    <tr>
+                                        <th style={thS}>Data Siswa</th>
+                                        <th style={thS}>Rata²</th>
+                                        <th style={thS}>Rincian Akademik</th>
+                                        <th style={thS}>Karakter Dasar</th>
+                                        <th style={{...thS, textAlign: 'center'}}>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoading ? <tr><td colSpan="5" style={{padding:'40px', textAlign:'center'}}><Loader2 className="animate-spin" style={{margin:'0 auto'}}/></td></tr> : filteredBukuInduk.map(s => {
+                                        const r = s.data_raport || {};
+                                        return (
+                                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={tdS}>
+                                                    <div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div>
+                                                    <div style={{fontSize:'0.7rem', color:'#64748b', fontWeight: 700}}>{s.program || '-'} • Angk. {new Date(s.created_at).getFullYear()}</div>
+                                                    <div style={{fontSize:'0.7rem', padding: '3px 8px', background: '#eff6ff', color: '#3b82f6', borderRadius: '4px', display: 'inline-block', marginTop: '4px', fontWeight: 800}}>{s.tahap_sekarang}</div>
+                                                </td>
+                                                <td style={tdS}>
+                                                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: brandNavy }}>{s.nilai_bahasa || 0}</span>
+                                                </td>
+                                                <td style={{...tdS, fontSize: '0.8rem'}}>
+                                                    <div style={{display: 'flex', gap: '15px'}}>
+                                                        <div><span style={{color: '#94a3b8'}}>KTB:</span> <b style={{color: '#334155'}}>{r.kotoba || 0}</b></div>
+                                                        <div><span style={{color: '#94a3b8'}}>BNP:</span> <b style={{color: '#334155'}}>{r.bunpo || 0}</b></div>
+                                                        <div><span style={{color: '#94a3b8'}}>DKI:</span> <b style={{color: '#334155'}}>{r.dokkai || 0}</b></div>
+                                                    </div>
+                                                    <div style={{display: 'flex', gap: '15px', marginTop: '4px'}}>
+                                                        <div><span style={{color: '#94a3b8'}}>CHK:</span> <b style={{color: '#334155'}}>{r.choukai || 0}</b></div>
+                                                        <div><span style={{color: '#94a3b8'}}>KWA:</span> <b style={{color: '#334155'}}>{r.kaiwa || 0}</b></div>
+                                                    </div>
+                                                </td>
+                                                <td style={{...tdS, fontSize: '0.8rem'}}>
+                                                    <div><span style={{color: '#94a3b8'}}>Sikap:</span> <b style={{color: '#f59e0b'}}>{r.perilaku || '-'}</b></div>
+                                                    <div style={{marginTop: '2px'}}><span style={{color: '#94a3b8'}}>Disiplin:</span> <b style={{color: '#f59e0b'}}>{r.kedisiplinan || '-'}</b></div>
+                                                </td>
+                                                <td style={{...tdS, textAlign: 'center'}}>
+                                                    <button onClick={() => openRaportModal(s)} style={btnA('#8b5cf6')} title="Edit / Lihat Raport Detail"><Edit3 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                    {filteredBukuInduk.length === 0 && !isLoading && <tr><td colSpan="5" style={{padding:'40px', textAlign:'center', color:'#94a3b8', fontWeight:600}}>Tidak ada data arsip yang sesuai.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : 
+                    activeTab !== 'REKAP_NILAI' ? (
                         <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
@@ -404,8 +553,8 @@ export default function DashboardPendidikan() {
                                     <div><label style={labelS}>Kaiwa</label><input type="number" required min="0" max="100" style={inputS} name="kaiwa" value={raportData.kaiwa} onChange={handleRaportChange} /></div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '20px', background: '#f8fafc', padding: '15px 20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
-                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>JUMLAH NILAI</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b' }}>{totalAkademik}</div></div>
-                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>RATA-RATA</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: brandNavy }}>{rataRataRaport}</div></div>
+                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>JUMLAH NILAI</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b' }}>{totalAkademikModal}</div></div>
+                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>RATA-RATA</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: brandNavy }}>{rataRataRaportModal}</div></div>
                                 </div>
 
                                 {/* SEGMEN 3: NILAI SIKAP / KARAKTER */}
@@ -437,11 +586,10 @@ export default function DashboardPendidikan() {
 const activeMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: '#eff6ff', color: brandNavy, border: 'none', borderRadius: '10px', fontWeight: 800, width: '100%', textAlign: 'left', cursor: 'pointer' };
 const inactiveMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: 'transparent', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: 700, width: '100%', textAlign: 'left', cursor: 'pointer', transition: '0.2s' };
 const thS = { padding: '15px 20px', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const tdS = { padding: '15px 20px', fontSize: '0.9rem' };
-const btnA = (c) => ({ background: 'white', border: `1px solid ${c}40`, color: c, padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' });
+const tdS = { padding: '15px 20px', fontSize: '0.9rem', verticalAlign: 'middle' };
+const btnA = (c) => ({ background: 'white', border: `1px solid ${c}40`, color: c, padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' });
 const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' };
 const modalContent = { background: 'white', padding: '30px', borderRadius: '15px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
 const labelS = { display: 'block', fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' };
 const inputS = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem', background: '#f8fafc' };
-const badgeS = { fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', background: '#e0e7ff', color: '#3730a3', fontWeight: 800 };
-const sectionTitle = { fontSize: '0.9rem', color: '#3b82f6', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' };
+const sectionTitle = { fontSize: '0.9rem', color: '#3b82f6', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', marginTop: '20px' };

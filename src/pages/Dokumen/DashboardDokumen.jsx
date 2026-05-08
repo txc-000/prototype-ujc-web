@@ -30,7 +30,11 @@ export default function DashboardDokumen() {
     const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
     const [isBerkasModalOpen, setIsBerkasModalOpen] = useState(false);
     const [isOtitModalOpen, setIsOtitModalOpen] = useState(false);
-    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); // MODAL CETAK OTIT
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false); 
+    // State Modal Terbang
+    const [flyModal, setFlyModal] = useState(null);
+    const [flyDate, setFlyDate] = useState('');
+
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -103,10 +107,11 @@ export default function DashboardDokumen() {
         setIsLoading(true);
         try {
             let stageFilter = [];
-            if (activeTab === 'PEMBERKASAN') stageFilter = ['MATCHED', 'PENGUMPULAN BERKAS'];
+            // Menyesuaikan ulang tahapan agar sinkron dengan alur
+            if (activeTab === 'PEMBERKASAN') stageFilter = ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN', 'PENGUMPULAN BERKAS'];
             if (activeTab === 'KONTRAK') stageFilter = ['TTD KONTRAK'];
             if (activeTab === 'COE_VISA') stageFilter = ['APPLY COE', 'APPLY VISA'];
-            if (activeTab === 'KEBERANGKATAN') stageFilter = ['PENDIDIKAN DIKLAT', 'SIAP BERANGKAT']; 
+            if (activeTab === 'KEBERANGKATAN') stageFilter = ['SIAP BERANGKAT']; 
             if (activeTab === 'SELESAI') stageFilter = ['ALUMNI']; 
 
             const { data, error } = await supabase
@@ -249,7 +254,8 @@ export default function DashboardDokumen() {
         } catch (err) { alert(err.message); }
     };
 
-    const handleTerbang = async (siswa) => {
+    // FUNGSI BARU: INIT MODAL TERBANG
+    const initModalTerbang = (siswa) => {
         const totalDocs = docItems.length;
         const parsedStatus = typeof siswa.pemberkasan_status === 'string' ? JSON.parse(siswa.pemberkasan_status || '{}') : (siswa.pemberkasan_status || {});
         const doneCount = Object.values(parsedStatus).filter(v => v === true).length;
@@ -264,22 +270,33 @@ export default function DashboardDokumen() {
             return; 
         }
 
-        if(!window.confirm(`Konfirmasi Keberangkatan: Apakah ${siswa.nama_lengkap} sudah resmi terbang ke Jepang?\n\nData siswa ini akan dikeluarkan dari antrean aktif dan dipindahkan ke Modul Pantauan Alumni.`)) return;
+        setFlyModal(siswa);
+        setFlyDate('');
+    };
+
+    // FUNGSI BARU: EKSEKUSI TERBANG + INJECT TANGGAL ENTRI
+    const handleFlySubmit = async (e) => {
+        e.preventDefault();
+        if(!window.confirm(`Konfirmasi final: Siswa ${flyModal.nama_lengkap} akan diterbangkan pada tanggal ${flyDate}? Data akan diteruskan ke Keuangan.`)) return;
         
+        setIsSubmitting(true);
         try {
             const { error } = await supabase.from('students').update({ 
                 tahap_sekarang: 'ALUMNI', 
+                status_alumni: 'AKTIF', // Dinyalakan agar ditagih Finance
                 status_akhir: 'AKTIF BEKERJA', 
+                tanggal_entri: flyDate, // INJEKSI TANGGAL ENTRI
                 updated_at: new Date() 
-            }).eq('id', siswa.id);
+            }).eq('id', flyModal.id);
             
             if (error) throw error;
             
-            await logActivity(`Melaporkan keberangkatan siswa: ${siswa.nama_lengkap}`);
+            await logActivity(`Menerbangkan siswa ${flyModal.nama_lengkap} ke Jepang. Tgl Entri: ${flyDate}`);
             await incrementPoint();
-            alert("Keberangkatan berhasil dicatat! Siswa kini dipantau melalui Dashboard Alumni.");
+            alert("Keberangkatan berhasil dicatat! Siswa resmi menjadi ALUMNI dan tagihan diaktifkan.");
+            setFlyModal(null);
             fetchStudents();
-        } catch (err) { alert("Gagal melaporkan: " + err.message); }
+        } catch (err) { alert("Gagal melaporkan: " + err.message); } finally { setIsSubmitting(false); }
     };
 
     const handleWA = (nama, telp, konteks) => {
@@ -315,7 +332,7 @@ export default function DashboardDokumen() {
                     <button onClick={() => setActiveTab('PEMBERKASAN')} style={activeTab === 'PEMBERKASAN' ? activeMenuS : inactiveMenuS}><ClipboardCheck size={18} /> Pemberkasan Awal</button>
                     <button onClick={() => setActiveTab('KONTRAK')} style={activeTab === 'KONTRAK' ? activeMenuS : inactiveMenuS}><FileCheck size={18} /> Kontrak Kerja</button>
                     <button onClick={() => setActiveTab('COE_VISA')} style={activeTab === 'COE_VISA' ? activeMenuS : inactiveMenuS}><Send size={18} /> Proses CoE & Visa</button>
-                    <button onClick={() => setActiveTab('KEBERANGKATAN')} style={activeTab === 'KEBERANGKATAN' ? activeMenuS : inactiveMenuS}><PlaneTakeoff size={18} /> Keberangkatan</button>
+                    <button onClick={() => setActiveTab('KEBERANGKATAN')} style={activeTab === 'KEBERANGKATAN' ? activeMenuS : inactiveMenuS}><PlaneTakeoff size={18} /> Laporan Keberangkatan</button>
                     
                     <div style={{ margin: '10px 0', borderBottom: '2px solid #f1f5f9' }}></div>
                     <button onClick={() => setActiveTab('SELESAI')} style={activeTab === 'SELESAI' ? {...activeMenuS, background: '#fef2f2', color: '#ef4444'} : inactiveMenuS}><Archive size={18} /> Arsip Keberangkatan</button>
@@ -416,7 +433,10 @@ export default function DashboardDokumen() {
                                                         <button onClick={() => handleUpdateStage(s.id, s.nama_lengkap, 'SIAP BERANGKAT')} style={btnGo}>Visa Terbit (Siap Terbang)</button>
                                                     )}
                                                     {activeTab === 'KEBERANGKATAN' && (
-                                                        <button onClick={() => handleTerbang(s)} style={{...btnGo, background: '#10b981'}}>Laporkan Terbang ✈️</button>
+                                                        // ── PERUBAHAN: MEMBUKA MODAL TERBANG, BUKAN LANGSUNG EKSEKUSI ──
+                                                        <button onClick={() => initModalTerbang(s)} style={{...btnGo, background: '#10b981', display: 'flex', alignItems: 'center', gap: '5px'}}>
+                                                            <PlaneTakeoff size={14}/> Set Jadwal Terbang
+                                                        </button>
                                                     )}
                                                     {activeTab === 'SELESAI' && (
                                                         <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 800, padding: '6px 12px', background: '#dcfce7', borderRadius: '6px', border: '1px solid #10b981' }}>✔️ Selesai Proses</span>
@@ -430,6 +450,36 @@ export default function DashboardDokumen() {
                         </table>
                     </div>
                 </div>
+
+                {/* ── MODAL TERBANG (INPUT TGL ENTRI) ── */}
+                {flyModal && (
+                    <div style={modalOverlay}>
+                        <form onSubmit={handleFlySubmit} style={modalContent}>
+                            <div style={modalHeader}>
+                                <div>
+                                    <h3 style={{ margin: 0, color: '#1e293b', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}><PlaneTakeoff size={20} color="#10b981" /> Laporan Keberangkatan</h3>
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>{flyModal.nama_lengkap}</p>
+                                </div>
+                                <button type="button" onClick={() => setFlyModal(null)} style={btnDismis}><X size={20} /></button>
+                            </div>
+                            <div style={{ padding: '25px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                <div>
+                                    <label style={labelS}>Tanggal Tiba di Jepang (Entri) *</label>
+                                    <input type="date" required value={flyDate} onChange={(e) => setFlyDate(e.target.value)} style={{...inputS, border: '2px solid #cbd5e1'}} />
+                                    <p style={{fontSize: '0.75rem', color: '#ef4444', marginTop: '10px', fontWeight: 700}}>
+                                        Perhatian: Tanggal ini akan otomatis diteruskan ke Divisi Keuangan dan menjadi acuan hitungan draf invoice penagihan bulanan untuk Kumiai.
+                                    </p>
+                                </div>
+                            </div>
+                            <div style={modalFooter}>
+                                <button type="button" onClick={() => setFlyModal(null)} style={btnCancel}>Batal</button>
+                                <button type="submit" disabled={isSubmitting} style={{...btnSubmit, background: '#10b981'}}>
+                                    {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : 'Terbangkan Siswa'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
 
                 {/* ── MODAL 1: CHECKLIST BERKAS FISIK ── */}
                 {isChecklistModalOpen && selectedStudent && (

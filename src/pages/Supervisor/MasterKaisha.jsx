@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Plus, MoreVertical, Edit, Trash2, X, Building2, MapPin, Phone, Mail, Briefcase, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, MoreVertical, Edit, Trash2, X, Building2, MapPin, Phone, Mail, Briefcase, CheckCircle2, Users, FileText } from 'lucide-react';
 
 const brandNavy = '#101869';
 
@@ -31,11 +31,105 @@ export default function MasterKaisha() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase.from('master_kaisha').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
-            if (data) setKaishaList(data);
+            // 1. Ambil data Master Kaisha
+            const { data: kaishaData, error: kError } = await supabase.from('master_kaisha').select('*');
+            if (kError) throw kError;
+
+            // 2. Ambil data Job Orders (untuk Auto-Sync & Statistik)
+            const { data: joData } = await supabase.from('job_orders').select('id, perusahaan, kumiai');
+            
+            // --- LOGIKA 1: AUTO-SYNC KAISHA BARU DARI JOB ORDERS ---
+            const existingKaishaNames = new Set(kaishaData.map(k => k.nama_perusahaan?.toLowerCase().trim()));
+            const missingKaishas = [];
+
+            if (joData) {
+                joData.forEach(jo => {
+                    if (jo.perusahaan) {
+                        const pName = jo.perusahaan.trim();
+                        const pNameLower = pName.toLowerCase();
+                        
+                        if (!existingKaishaNames.has(pNameLower)) {
+                            existingKaishaNames.add(pNameLower); // cegah duplikasi di loop
+                            missingKaishas.push({
+                                nama_perusahaan: pName,
+                                nama_kumiai: jo.kumiai || '',
+                                status: 'Aktif'
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Jika ada Kaisha baru, otomatis Insert lalu Refresh data
+            let finalKaishaData = [...kaishaData];
+            if (missingKaishas.length > 0) {
+                await supabase.from('master_kaisha').insert(missingKaishas);
+                const { data: updatedKaisha } = await supabase.from('master_kaisha').select('*');
+                if (updatedKaisha) finalKaishaData = updatedKaisha;
+            }
+
+            // --- BUGFIX: PEMBERSIH DUPLIKAT (MENCEGAH EFEK REACT STRICT MODE) ---
+            const uniqueMap = new Map();
+            finalKaishaData.forEach(k => {
+                const key = k.nama_perusahaan?.toLowerCase().trim();
+                if (key && !uniqueMap.has(key)) {
+                    uniqueMap.set(key, k); // Hanya simpan satu entitas per nama unik
+                }
+            });
+            const cleanedKaishaData = Array.from(uniqueMap.values());
+
+            // --- LOGIKA 2: KALKULASI STATISTIK (HELICOPTER VIEW) ---
+            const { data: participants } = await supabase.from('job_order_participants').select('student_id, job_id');
+            const { data: students } = await supabase.from('students').select('id, perusahaan_tujuan, status_alumni, tahap_sekarang');
+
+            const statsMap = {};
+            cleanedKaishaData.forEach(k => {
+                if (k.nama_perusahaan) {
+                    statsMap[k.nama_perusahaan.toLowerCase().trim()] = { joCount: 0, studentCount: 0 };
+                }
+            });
+
+            // Hitung jumlah Job Order per Kaisha
+            const joIdToPerusahaan = {};
+            if (joData) {
+                joData.forEach(jo => {
+                    if (jo.perusahaan) {
+                        const key = jo.perusahaan.toLowerCase().trim();
+                        if (statsMap[key]) statsMap[key].joCount += 1;
+                        joIdToPerusahaan[jo.id] = key;
+                    }
+                });
+            }
+
+            // Hitung jumlah Siswa Aktif per Kaisha
+            const activeStudents = (students || []).filter(s => s.tahap_sekarang === 'SIAP BERANGKAT' && (!s.status_alumni || s.status_alumni === 'AKTIF'));
+            
+            activeStudents.forEach(s => {
+                let compKey = s.perusahaan_tujuan?.toLowerCase().trim();
+                
+                // Jika kosong, lacak dari job_order_participants
+                if (!compKey && participants) {
+                    const p = participants.find(part => part.student_id === s.id);
+                    if (p && joIdToPerusahaan[p.job_id]) {
+                        compKey = joIdToPerusahaan[p.job_id];
+                    }
+                }
+
+                if (compKey && statsMap[compKey]) {
+                    statsMap[compKey].studentCount += 1;
+                }
+            });
+
+            // Gabungkan Data Bersih dengan Statistik
+            const compiledData = cleanedKaishaData.map(k => ({
+                ...k,
+                stats: statsMap[k.nama_perusahaan?.toLowerCase().trim()] || { joCount: 0, studentCount: 0 }
+            })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            setKaishaList(compiledData);
+
         } catch (error) {
-            console.error("Gagal memuat data Kaisha:", error.message);
+            console.error("Gagal memuat data:", error.message);
         } finally {
             setIsLoading(false);
         }
@@ -95,7 +189,7 @@ export default function MasterKaisha() {
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
                 <div>
                     <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: '0 0 5px 0' }}>Master Kaisha (Perusahaan Jepang)</h1>
-                    <p style={{ color: '#64748b', margin: 0 }}>Kelola profil perusahaan dan Kumiai tempat siswa ditempatkan.</p>
+                    <p style={{ color: '#64748b', margin: 0 }}>Kelola profil perusahaan dan pantau statistik penempatan siswa.</p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
@@ -110,20 +204,20 @@ export default function MasterKaisha() {
             </header>
 
             {isLoading && kaishaList.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '50px', color: '#64748b', fontWeight: 600 }}>Memuat data...</div>
+                <div style={{ textAlign: 'center', padding: '50px', color: '#64748b', fontWeight: 600 }}>Menyinkronkan data...</div>
             ) : filteredData.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '50px', background: 'white', borderRadius: '12px', color: '#64748b', fontWeight: 600 }}>Belum ada data Kaisha yang cocok.</div>
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
                     {filteredData.map(kaisha => (
-                        <div key={kaisha.id} style={{ background: 'white', borderRadius: '12px', padding: '25px', boxShadow: '0 4px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                        <div key={kaisha.id} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', position: 'relative', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
                                 <div style={{ display: 'flex', gap: '15px' }}>
                                     <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: brandNavy, flexShrink: 0 }}>
                                         <Building2 size={24} />
                                     </div>
                                     <div>
-                                        <h3 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#1e293b', fontWeight: 800 }}>{kaisha.nama_perusahaan}</h3>
+                                        <h3 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#1e293b', fontWeight: 800, textTransform: 'uppercase' }}>{kaisha.nama_perusahaan}</h3>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#059669', fontWeight: 700 }}>
                                             <CheckCircle2 size={14} /> {kaisha.nama_kumiai || 'Tanpa Kumiai'}
                                         </div>
@@ -136,14 +230,28 @@ export default function MasterKaisha() {
                                     </button>
                                     {activeDropdown === kaisha.id && (
                                         <div ref={dropdownRef} style={dropdownContainer}>
-                                            <button onClick={() => openModal(kaisha)} style={dropdownItemS}><Edit size={14} /> Ubah Data</button>
+                                            <button onClick={() => openModal(kaisha)} style={dropdownItemS}><Edit size={14} /> Lengkapi Data</button>
                                             <button onClick={() => handleDelete(kaisha.id, kaisha.nama_perusahaan)} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={14} /> Hapus</button>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, marginTop: '10px' }}>
+                            <div style={{ display: 'flex', gap: '10px', margin: '5px 0 15px 0', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ flex: 1, textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: '#64748b', marginBottom: '3px' }}><FileText size={14}/></div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: brandNavy }}>{kaisha.stats.joCount}</div>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Job Order</div>
+                                </div>
+                                <div style={{ width: '1px', background: '#cbd5e1' }}></div>
+                                <div style={{ flex: 1, textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: '#64748b', marginBottom: '3px' }}><Users size={14}/></div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#10b981' }}>{kaisha.stats.studentCount}</div>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Siswa Aktif</div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
                                 <div style={infoRowS}><Briefcase size={14}/> <span style={{fontWeight: 600, color:'#334155'}}>{kaisha.bidang_industri || '-'}</span></div>
                                 <div style={infoRowS}><Phone size={14}/> <span>{kaisha.no_telepon || '-'}</span> <span style={{color: '#cbd5e1'}}>•</span> <span>{kaisha.penanggung_jawab || '-'}</span></div>
                                 {kaisha.email && <div style={infoRowS}><Mail size={14}/> <span>{kaisha.email}</span></div>}
@@ -151,7 +259,7 @@ export default function MasterKaisha() {
                             </div>
 
                             <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>Ditambahkan: {new Date(kaisha.created_at).toLocaleDateString('id-ID')}</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>Status Kemitraan:</span>
                                 <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800, background: kaisha.status === 'Aktif' ? '#dcfce7' : '#fee2e2', color: kaisha.status === 'Aktif' ? '#166534' : '#991b1b' }}>{kaisha.status}</span>
                             </div>
                         </div>
@@ -163,7 +271,7 @@ export default function MasterKaisha() {
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
                     <form onSubmit={handleSubmit} style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '600px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#1e293b' }}>{editingId ? 'Edit Profil Kaisha' : 'Tambah Master Kaisha Baru'}</h2>
+                            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#1e293b' }}>{editingId ? 'Lengkapi Profil Kaisha' : 'Tambah Master Kaisha Baru'}</h2>
                             <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={20} /></button>
                         </div>
 
@@ -173,7 +281,7 @@ export default function MasterKaisha() {
                                 <div><label style={labelForm}>Nama Kumiai</label><input type="text" name="nama_kumiai" value={formData.nama_kumiai} onChange={handleInputChange} style={inputForm} placeholder="Contoh: JITCO" /></div>
                             </div>
                             
-                            <div><label style={labelForm}>Bidang Industri *</label><input type="text" name="bidang_industri" value={formData.bidang_industri} onChange={handleInputChange} required style={inputForm} placeholder="Contoh: Manufaktur / Pertanian / Perawat" /></div>
+                            <div><label style={labelForm}>Bidang Industri</label><input type="text" name="bidang_industri" value={formData.bidang_industri} onChange={handleInputChange} style={inputForm} placeholder="Contoh: Manufaktur / Pertanian / Perawat" /></div>
                             
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                                 <div><label style={labelForm}>Penanggung Jawab (PIC)</label><input type="text" name="penanggung_jawab" value={formData.penanggung_jawab} onChange={handleInputChange} style={inputForm} placeholder="Nama PIC" /></div>

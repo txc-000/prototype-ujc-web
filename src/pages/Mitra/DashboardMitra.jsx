@@ -85,11 +85,16 @@ export default function DashboardMitra() {
         
         setIsSubmitting(true);
         try {
+            // ========================================================
+            // INJEKSI BLUEPRINT MODUL 3: AUTO-PRICING & STATUS
+            // ========================================================
             const payload = {
                 ...formData,
                 created_by: mitraProfile.id,
-                tahap_sekarang: 'PENGAJUAN MITRA', // Status khusus agar terpisah dari reguler biasa
+                lpk_asal: mitraProfile.nama, // Inject otomatis nama mitra
+                tahap_sekarang: 'WAWANCARA MITRA', // Sesuai Blueprint: Status awal ditahan di wawancara
                 status_akhir: 'MENUNGGU REVIEW',
+                total_bayar: 33000000 // Sesuai Blueprint: Tagihan reguler hangus (Rp 0), sisa tagihan Diklat saja
             };
 
             const { error } = await supabase.from('students').insert([payload]);
@@ -111,6 +116,9 @@ export default function DashboardMitra() {
         await supabase.auth.signOut();
         navigate('/login');
     };
+
+    // Helper anti-crash
+    const cleanStr = (str) => (str || '').toLowerCase().trim();
 
     if (isLoading && !mitraProfile) {
         return (
@@ -257,7 +265,7 @@ export default function DashboardMitra() {
                                             let icon = <Clock size={16} color="#d97706" />;
                                             let bg = '#fef3c7', col = '#92400e';
                                             
-                                            if (tahap === 'pengajuan mitra' || status === 'menunggu review') {
+                                            if (tahap === 'wawancara mitra' || status === 'menunggu review') {
                                                 bg = '#fef3c7'; col = '#92400e'; icon = <Clock size={16} color="#92400e" />;
                                             } else if (status === 'ditolak' || status === 'gagal') {
                                                 bg = '#fee2e2'; col = '#991b1b'; icon = <XCircle size={16} color="#991b1b" />;

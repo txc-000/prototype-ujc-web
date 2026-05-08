@@ -29,6 +29,10 @@ import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
 import DashboardDirektur from './pages/Direktur/DashboardDirektur';
 import DashboardSuperAdmin from './pages/AdminGate/DashboardSuperAdmin';
 
+// ── IMPORT KOMPONEN MASTER DATA ──
+import MasterKumiai from './pages/Supervisor/MasterKumiai'; // <-- SESUAIKAN PATH FOLDER TUAN
+import MasterKaisha from './pages/Supervisor/MasterKaisha'; // <-- SESUAIKAN PATH FOLDER TUAN
+
 // ── IMPORT KOMPONEN ALUMNI ──
 import DashboardAlumni from './pages/Alumni/DashboardAlumni';
 
@@ -39,9 +43,10 @@ import DashboardMitra from './pages/Mitra/DashboardMitra';
 import PrintRirekisho from './components/PrintRirekisho'; 
 import PrintLaporanKaisha from './components/PrintLaporanKaisha';
 
-// ── IMPORT RUTE INVOICE B2B BARU (DARI FOLDER COMPONENTS) ──
+// ── IMPORT RUTE INVOICE & KWITANSI (DARI FOLDER COMPONENTS) ──
 import PrintInvoiceKumiai from './components/PrintInvoiceKumiai';
 import PrintInvoiceSummary from './components/PrintInvoiceSummary'; 
+import PrintKwitansiSiswa from './components/PrintKwitansiSiswa'; 
 
 // ── IMPORT KOMPONEN SHOUSHIKI & SERTIFIKAT ──
 import PrintShoushiki1_10 from './components/PrintShoushiki1_10';
@@ -130,8 +135,8 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Daftar rute sistem (navbar dinonaktifkan di sini)
-  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
+  // Daftar rute sistem (navbar dinonaktifkan di sini) - PERHATIKAN PENAMBAHAN ROUTE MASTER
+  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/master-kumiai', '/master-kaisha', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-kwitansi-siswa', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
 
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
     return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc', color: '#101869', fontWeight: 800 }}>Memeriksa Akses...</div>;
@@ -161,6 +166,10 @@ function AppContent() {
           {/* ── RUTE COMMAND CENTER SUPER ADMIN ── */}
           <Route path="/superadmin/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN']}><DashboardSuperAdmin /></ProtectedRoute>} />
 
+          {/* ── RUTE MASTER DATA (DIBUKA UNTUK REGULER & SUPERVISOR/DIREKTUR) ── */}
+          <Route path="/master-kumiai" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN', 'REGULER', 'SUPERVISOR', 'DIREKTUR']}><MasterKumiai /></ProtectedRoute>} />
+          <Route path="/master-kaisha" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN', 'REGULER', 'SUPERVISOR', 'DIREKTUR']}><MasterKaisha /></ProtectedRoute>} />
+
           {/* ── RUTE DIVISI PUSAT PENGENDALI ── */}
           <Route path="/reguler/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['REGULER', 'DIREKTUR', 'SUPERVISOR']}><DashboardReguler /></ProtectedRoute>} />
           <Route path="/administrasi/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'DIREKTUR', 'SUPERVISOR']}><DashboardAdministrasi /></ProtectedRoute>} />
@@ -181,9 +190,10 @@ function AppContent() {
           <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN', 'REGULER']}><PrintRirekisho /></ProtectedRoute>} />
           <Route path="/print-laporan-kaisha/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'REGULER', 'DOKUMEN']}><PrintLaporanKaisha /></ProtectedRoute>} />
           
-          {/* ── RUTE INVOICE B2B BARU ── */}
+          {/* ── RUTE INVOICE & KWITANSI (KEUANGAN) ── */}
           <Route path="/print-invoice-detail/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceKumiai /></ProtectedRoute>} />
           <Route path="/print-invoice-summary/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceSummary /></ProtectedRoute>} />
+          <Route path="/print-kwitansi-siswa/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintKwitansiSiswa /></ProtectedRoute>} /> 
           
           {/* ── RUTE LAINNYA ── */}
           <Route path="/print-shoushiki-10/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'SUPERVISOR', 'DIREKTUR', 'REGULER']}><PrintShoushiki1_10 /></ProtectedRoute>} />
