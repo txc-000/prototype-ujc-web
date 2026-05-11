@@ -27,6 +27,7 @@ export default function DashboardReguler() {
 
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterAsal, setFilterAsal] = useState('SEMUA'); // BARU: FILTER SISWA MITRA VS REGULER
     
     // ── STATE USER LOGIN ──
     const [currentUser, setCurrentUser] = useState(null);
@@ -128,7 +129,7 @@ export default function DashboardReguler() {
             let query = supabase.from('students').select('*').order('updated_at', { ascending: false });
 
             if (activeTab === 'PENDAFTARAN') query = query.in('tahap_sekarang', ['REGISTRASI']);
-            else if (activeTab === 'SELEKSI') query = query.in('tahap_sekarang', ['SELEKSI AWAL']);
+            else if (activeTab === 'SELEKSI') query = query.in('tahap_sekarang', ['SELEKSI AWAL', 'WAWANCARA MITRA']);
             else if (activeTab === 'DIKLAT') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT']);
             else if (activeTab === 'PEMANGGILAN') query = query.or('tahap_sekarang.eq.AVAILABLE,status_akhir.eq.BELUM DAPAT JOB');
             else if (activeTab === 'MATCHING') query = query.in('tahap_sekarang', ['AVAILABLE', 'PRA_MENSETSU', 'INTERVIEW']);
@@ -267,13 +268,12 @@ export default function DashboardReguler() {
     const handleEvalSubmit = async (e) => {
         e.preventDefault(); setIsSubmitting(true);
         try {
-            const { error } = await supabase.from('students').update({ medical_checkup_status: evalFormData.medical_checkup_status || null }).eq('id', evalModal.id);
+            const { error } = await supabase.from('students').update({ medical_checkup_status: evalFormData.medical_checkup_status || null, status_akhir: evalFormData.medical_checkup_status ? 'REVIEW SELESAI' : 'MENUNGGU REVIEW' }).eq('id', evalModal.id);
             if (error) throw error; 
-            alert("Hasil MCU Disimpan!"); setEvalModal(null); fetchStudents();
+            alert("Hasil Evaluasi / MCU Disimpan!"); setEvalModal(null); fetchStudents();
         } catch (err) { alert("Gagal: " + err.message); } finally { setIsSubmitting(false); }
     };
 
-    // ── HANDLER EDUKASI (DIKLAT) ──
     const openEduEvalModal = (student) => {
         setEduEvalStudent(student);
         setEduEvalForm({ jenis_tes: 'UJIAN BAB', nilai: '', catatan: '' });
@@ -329,24 +329,10 @@ export default function DashboardReguler() {
         } catch (err) { alert('Gagal: ' + err.message); } finally { setIsSubmitting(false); }
     };
 
-    // ── -------------------------- ──
-
-    const handleFlySubmit = async (e) => {
-        e.preventDefault();
-        if(!window.confirm(`Konfirmasi final: Siswa ${flyModal.nama_lengkap} akan diterbangkan pada tanggal ${flyDate}? Data akan diteruskan ke Keuangan.`)) return;
-        setIsSubmitting(true);
-        try {
-            const { error } = await supabase.from('students').update({ tanggal_entri: flyDate, tahap_sekarang: 'SIAP BERANGKAT', status_alumni: 'AKTIF', updated_at: new Date() }).eq('id', flyModal.id);
-            if (error) throw error;
-            await logActivity(`Menerbangkan siswa ${flyModal.nama_lengkap} ke Jepang.`); await incrementPoint();
-            alert("Siswa berhasil diterbangkan! Data masuk ke Keuangan."); setFlyModal(null); fetchStudents();
-        } catch (err) { alert("Gagal: " + err.message); } finally { setIsSubmitting(false); }
-    };
-
     const updateStage = async (id, nama, newStage, successMsg) => {
         if (!window.confirm(`Pindahkan ${nama} ke tahap ${newStage}?`)) return;
         try {
-            const { error } = await supabase.from('students').update({ tahap_sekarang: newStage, updated_at: new Date() }).eq('id', id);
+            const { error } = await supabase.from('students').update({ tahap_sekarang: newStage, status_akhir: 'Proses', updated_at: new Date() }).eq('id', id);
             if (error) throw error; 
             if(successMsg) alert(successMsg); 
             await logActivity(`Update status ${nama} ke ${newStage}`); await incrementPoint(); fetchStudents();
@@ -362,19 +348,28 @@ export default function DashboardReguler() {
         } catch (err) { alert(err.message); }
     };
 
-    const filteredStudents = students.filter(s => (s.nama_lengkap || '').toLowerCase().includes(searchTerm.toLowerCase()) || (s.nik || '').includes(searchTerm));
+    // ── FILTER DATA SISWA (SEARCH & ASAL SISWA) ──
+    const filteredStudents = students.filter(s => {
+        const isMitra = s.lpk_asal && s.lpk_asal.trim() !== '';
+        let matchAsal = true;
+        if (filterAsal === 'REGULER') matchAsal = !isMitra;
+        if (filterAsal === 'MITRA') matchAsal = isMitra;
+        
+        const matchSearch = (s.nama_lengkap || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            (s.nik || '').includes(searchTerm) || 
+                            (s.lpk_asal || '').toLowerCase().includes(searchTerm.toLowerCase());
+                            
+        return matchSearch && matchAsal;
+    });
+
     const filteredJO = jobOrders.filter(j => (j.perusahaan || '').toLowerCase().includes(searchTerm.toLowerCase()) || (j.bidang || '').toLowerCase().includes(searchTerm.toLowerCase()));
     const activeJONames = jobOrders.filter(j => j.status === 'OPEN').map(j => j.perusahaan);
-
-    const totalAkademikModal = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
-    const rataRataRaportModal = (totalAkademikModal / 5).toFixed(1);
 
     if (selectedJobOrder) { return <JobOrderDetail jobOrder={selectedJobOrder} onBack={() => { setSelectedJobOrder(null); fetchJobOrders(); }} />; }
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
             
-            {/* ── SIDEBAR ── */}
             <aside style={{ width: '260px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '25px 20px', borderBottom: '1px solid #e2e8f0', background: brandNavy, color: 'white' }}>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Reguler & Rekrutmen</h2>
@@ -422,7 +417,7 @@ export default function DashboardReguler() {
                             {activeTab === 'PEMANGGILAN' && 'Daftar Pemanggilan Siswa'}
                             {activeTab === 'JOB_ORDER' && 'Manajemen Job Order (Jepang)'}
                             {activeTab === 'MATCHING' && 'Matching & Proses Wawancara'}
-                            {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara (Dokumen & Terbang)'}
+                            {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara (Dokumen)'}
                         </h1>
                         <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem' }}>
                             {activeTab === 'DIKLAT' && 'Input absensi, evaluasi harian, dan penerbitan raport/sertifikat siswa.'}
@@ -435,11 +430,25 @@ export default function DashboardReguler() {
                     
                     {!isFormOpen && (
                         <div style={{ display: 'flex', gap: '10px' }}>
+                            {/* ── FILTER ASAL SISWA (Hanya tampil jika bukan di tab Job Order) ── */}
+                            {activeTab !== 'JOB_ORDER' && (
+                                <select 
+                                    value={filterAsal} 
+                                    onChange={(e) => setFilterAsal(e.target.value)} 
+                                    style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 700, color: '#475569', background: '#f8fafc', cursor: 'pointer' }}
+                                >
+                                    <option value="SEMUA">Semua Asal Siswa</option>
+                                    <option value="REGULER">Siswa UJC (Reguler)</option>
+                                    <option value="MITRA">Siswa Mitra LPK</option>
+                                </select>
+                            )}
+
                             <div style={{ position: 'relative' }}>
                                 <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                                <input type="text" placeholder="Cari..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' }} />
+                                <input type="text" placeholder="Cari data..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' }} />
                             </div>
-                            {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsCloneModalOpen(true)} style={{...btnPrimary, background: '#f59e0b', color: '#fff'}}><RefreshCw size={18}/> Re-Entry (Clone NIK)</button>}
+                            
+                            {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsCloneModalOpen(true)} style={{...btnPrimary, background: '#f59e0b', color: '#fff'}}><RefreshCw size={18}/> Re-Entry</button>}
                             {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsFormOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Pendaftar</button>}
                             
                             {activeTab === 'JOB_ORDER' && (<>
@@ -549,7 +558,7 @@ export default function DashboardReguler() {
                                         <th style={thStyle}>
                                             {activeTab === 'DIKLAT' ? 'Nilai Akademik & Tes Terakhir' : ['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? 'Perusahaan Tujuan' : 'Status Tahapan'}
                                         </th>
-                                        {activeTab === 'SELEKSI' && <th style={thStyle}>Status MCU</th>}
+                                        {activeTab === 'SELEKSI' && <th style={thStyle}>Status MCU & Wawancara</th>}
                                         {activeTab === 'DIKLAT' && <th style={thStyle}>Status Kelas</th>}
                                         {activeTab === 'PEMANGGILAN' && <th style={thStyle}>Keterangan Panggilan</th>}
                                         {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <th style={thStyle}>Tahap Seleksi</th>}
@@ -557,7 +566,7 @@ export default function DashboardReguler() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {isLoading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}><Loader2 size={30} className="animate-spin" style={{ margin: '0 auto 10px auto' }} /> Memuat data...</td></tr> : filteredStudents.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontWeight: 600 }}>Tidak ada data siswa di tahap ini.</td></tr> : filteredStudents.map((student) => {
+                                    {isLoading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}><Loader2 size={30} className="animate-spin" style={{ margin: '0 auto 10px auto' }} /> Memuat data...</td></tr> : filteredStudents.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontWeight: 600 }}>Tidak ada data siswa di tahap ini yang sesuai filter.</td></tr> : filteredStudents.map((student) => {
                                         const lastRecord = student.nilai_history.length > 0 ? student.nilai_history[student.nilai_history.length - 1] : null;
 
                                         return (
@@ -565,7 +574,15 @@ export default function DashboardReguler() {
                                             <td style={tdStyle}>
                                                 <div style={{ fontWeight: 800, color: '#1e293b' }}>{student.nama_lengkap}</div>
                                                 <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748b', fontWeight: 600 }}>NIK: {student.nik} | {student.telepon || '-'}</div>
-                                                <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                
+                                                {/* ── LABEL MITRA ── */}
+                                                {student.lpk_asal && student.lpk_asal.trim() !== '' && (
+                                                    <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 800, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Building2 size={12}/> Mitra: {student.lpk_asal}
+                                                    </div>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
                                                     {['MATCHING', 'PEMANGGILAN', 'DIKLAT', 'PASCA_INTERVIEW'].includes(activeTab) && (
                                                         <button onClick={() => setViewRaportStudent(student)} style={{ border:'none', background:'none', color:brandNavy, fontWeight:800, padding:0, cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'0.75rem' }}><ClipboardList size={14}/> Detail Raport</button>
                                                     )}
@@ -591,17 +608,26 @@ export default function DashboardReguler() {
                                                 </td>
                                             )}
                                             
-                                            {activeTab === 'SELEKSI' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: student.medical_checkup_status === 'FIT' ? '#dcfce7' : (student.medical_checkup_status === 'UNFIT' ? '#fee2e2' : '#fef3c7'), color: student.medical_checkup_status === 'FIT' ? '#166534' : (student.medical_checkup_status === 'UNFIT' ? '#991b1b' : '#92400e') }}>{student.medical_checkup_status || 'PENDING'}</span></td>}
+                                            {activeTab === 'SELEKSI' && <td style={tdStyle}>
+                                                <div style={{display:'flex', flexDirection:'column', gap:'5px', alignItems:'flex-start'}}>
+                                                    <span style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 800, background: student.medical_checkup_status === 'FIT' ? '#dcfce7' : (student.medical_checkup_status === 'UNFIT' ? '#fee2e2' : '#fef3c7'), color: student.medical_checkup_status === 'FIT' ? '#166534' : (student.medical_checkup_status === 'UNFIT' ? '#991b1b' : '#92400e') }}>MCU: {student.medical_checkup_status || 'PENDING'}</span>
+                                                    {student.lpk_asal && <span style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 800, background: student.status_akhir === 'REVIEW SELESAI' || student.status_akhir === 'DITERIMA' ? '#dbeafe' : '#fef3c7', color: student.status_akhir === 'REVIEW SELESAI' || student.status_akhir === 'DITERIMA' ? '#1e40af' : '#92400e' }}>WAWANCARA: {student.status_akhir}</span>}
+                                                </div>
+                                            </td>}
                                             
                                             {activeTab === 'DIKLAT' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', display: 'inline-block', marginBottom: '5px' }}>{student.tahap_sekarang}</span></td>}
                                             
                                             {activeTab === 'PEMANGGILAN' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: student.status_akhir === 'BELUM DAPAT JOB' ? '#fee2e2' : '#f1f5f9', color: student.status_akhir === 'BELUM DAPAT JOB' ? '#991b1b' : '#475569' }}>{student.status_akhir === 'BELUM DAPAT JOB' ? 'Tanggungan (Belum Dapat Job)' : 'Menunggu Job (Available)'}</span></td>}
-                                            {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <td style={tdStyle}><div style={{...badgeS, background: '#eff6ff', color: '#2563eb'}}>{student.tahap_sekarang}</div></td>}
+                                            {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <td style={tdStyle}><div style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', background: '#eff6ff', color: '#2563eb', fontWeight: 800, display: 'inline-block' }}>{student.tahap_sekarang}</div></td>}
 
                                             <td style={tdStyle}>
                                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                                     {activeTab === 'PENDAFTARAN' && (<><button onClick={() => handleEditInit(student)} style={actionBtn('#3b82f6')} title="Edit"><Edit3 size={18}/></button><button onClick={() => setUploadModalId(student.id)} style={actionBtn('#10b981')} title="Foto"><Camera size={18}/></button><button onClick={() => updateStage(student.id, student.nama_lengkap, 'SELEKSI AWAL', 'Dipindah ke Seleksi')} style={{...btnAction, background: brandNavy, color: 'white'}}>Proses Seleksi</button></>)}
-                                                    {activeTab === 'SELEKSI' && (<><button onClick={() => openEvalModal(student)} style={actionBtn('#f59e0b')} title="Input MCU"><ClipboardList size={18}/></button><button onClick={() => handleHubungiSiswa(student.nama_lengkap, student.telepon, 'SELEKSI')} style={{...actionBtn('#10b981'), background: '#ecfdf5'}} title="Panggil via WA"><MessageCircle size={18} color="#10b981"/></button><button onClick={() => updateStage(student.id, student.nama_lengkap, 'PENDIDIKAN REGULER', 'Masuk Kelas')} style={{...btnAction, background: brandNavy, color: 'white'}}>Masuk Kelas</button></>)}
+                                                    {activeTab === 'SELEKSI' && (<>
+                                                        <button onClick={() => openEvalModal(student)} style={actionBtn('#f59e0b')} title="Input Evaluasi & MCU"><ClipboardList size={18}/></button>
+                                                        <button onClick={() => handleHubungiSiswa(student.nama_lengkap, student.telepon, 'SELEKSI')} style={{...actionBtn('#10b981'), background: '#ecfdf5'}} title="Panggil via WA"><MessageCircle size={18} color="#10b981"/></button>
+                                                        <button onClick={() => updateStage(student.id, student.nama_lengkap, 'PENDIDIKAN REGULER', 'Masuk Kelas')} style={{...btnAction, background: brandNavy, color: 'white'}}>Masuk Kelas</button>
+                                                    </>)}
                                                     
                                                     {activeTab === 'DIKLAT' && (
                                                         <>
@@ -675,7 +701,7 @@ export default function DashboardReguler() {
                                             </td>
                                             <td style={tdStyle}>{j.bidang}</td>
                                             <td style={{...tdStyle, fontWeight: 900, color: brandNavy}}>{j.kuota} Orang</td>
-                                            <td style={tdStyle}><span style={{...badgeS, background: j.status === 'OPEN' ? '#dcfce7' : '#fee2e2', color: j.status === 'OPEN' ? '#166534' : '#991b1b'}}>{j.status}</span></td>
+                                            <td style={tdStyle}><span style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, display: 'inline-block', background: j.status === 'OPEN' ? '#dcfce7' : '#fee2e2', color: j.status === 'OPEN' ? '#166534' : '#991b1b'}}>{j.status}</span></td>
                                             <td style={{...tdStyle, textAlign: 'center'}}>
                                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                     <button onClick={() => setSelectedJobOrder(j)} style={{border:'none', background:'#eff6ff', color:brandNavy, fontWeight:800, padding: '8px 15px', borderRadius: '8px', cursor: 'pointer'}}>
@@ -796,7 +822,7 @@ export default function DashboardReguler() {
                         <form onSubmit={handleEvalSubmit} style={modalContent}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '15px' }}>
                                 <div>
-                                    <h3 style={{ margin: 0, color: '#1e293b', fontWeight: 800 }}>Input Hasil MCU</h3>
+                                    <h3 style={{ margin: 0, color: '#1e293b', fontWeight: 800 }}>Input Hasil Wawancara / MCU</h3>
                                     <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>{evalModal.nama_lengkap}</p>
                                 </div>
                                 <button type="button" onClick={() => setEvalModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><X size={20} /></button>
@@ -812,7 +838,7 @@ export default function DashboardReguler() {
                                 </div>
                             </div>
                             <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>
-                                {isSubmitting ? 'Menyimpan...' : 'Simpan Hasil MCU'}
+                                {isSubmitting ? 'Menyimpan...' : 'Simpan Hasil'}
                             </button>
                         </form>
                     </div> 

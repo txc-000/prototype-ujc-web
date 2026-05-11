@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
     LayoutDashboard, Users, FileText, BookOpen, 
-    Wallet, ShieldCheck, PieChart, Building, LogOut, Code
+    Wallet, ShieldCheck, PieChart, Building, LogOut, Code, Plane
 } from 'lucide-react';
 
 const brandNavy = '#101869';
@@ -27,14 +27,17 @@ export default function DashboardSuperAdmin() {
     };
 
     const modules = [
-        { name: 'Dashboard Reguler', path: '/reguler/dashboard', icon: <Users size={32} />, color: '#3b82f6', desc: 'Input & Pendaftaran Siswa' },
-        { name: 'Dashboard Rekrutmen', path: '/rekrutmen/dashboard', icon: <LayoutDashboard size={32} />, color: '#10b981', desc: 'Seleksi & Wawancara Kaisha' },
-        { name: 'Dashboard Dokumen', path: '/dokumen/dashboard', icon: <FileText size={32} />, color: '#f59e0b', desc: 'Pemberkasan, COE & Visa' },
-        { name: 'Dashboard Pendidikan', path: '/pendidikan/dashboard', icon: <BookOpen size={32} />, color: '#14b8a6', desc: 'Diklat & Presensi Siswa' },
-        { name: 'Dashboard Administrasi', path: '/administrasi/dashboard', icon: <Wallet size={32} />, color: '#6366f1', desc: 'Keuangan & Pembayaran' },
-        { name: 'Dashboard Supervisor', path: '/supervisor/dashboard', icon: <ShieldCheck size={32} />, color: '#ec4899', desc: 'Kontrol Master & Job Order' },
-        { name: 'Dashboard Direktur', path: '/direktur/dashboard', icon: <PieChart size={32} />, color: '#8b5cf6', desc: 'Executive Helicopter View' },
-        { name: 'Dashboard Mitra', path: '/mitra/dashboard', icon: <Building size={32} />, color: '#64748b', desc: 'Portal Agensi / Sekolah Lokal' },
+        { name: 'Reguler & Rekrutmen', path: '/reguler/dashboard', icon: <Users size={32} />, color: '#3b82f6', desc: 'Pendaftaran, Seleksi, Wawancara & Job Order' },
+        { name: 'Divisi Pendidikan', path: '/pendidikan/dashboard', icon: <BookOpen size={32} />, color: '#14b8a6', desc: 'Kelas, Evaluasi Harian, Raport & Sertifikat' },
+        { name: 'Divisi Dokumen', path: '/dokumen/dashboard', icon: <FileText size={32} />, color: '#f59e0b', desc: 'Pemberkasan, Rirekisho, COE & Visa' },
+        { name: 'Administrasi & Keuangan', path: '/administrasi/dashboard', icon: <Wallet size={32} />, color: '#6366f1', desc: 'Buku Kas, Tagihan Siswa & Invoice B2B' },
+        
+        { name: 'SPV Rekrutmen', path: '/supervisor/dashboard', stateParams: { spvType: 'REKRUTMEN' }, icon: <ShieldCheck size={32} />, color: '#ec4899', desc: 'Master Data & Kontrol Alur Rekrutmen' },
+        { name: 'SPV Dokumen', path: '/supervisor/dashboard', stateParams: { spvType: 'DOKUMEN' }, icon: <ShieldCheck size={32} />, color: '#eab308', desc: 'Approval & Kontrol Alur Dokumen' },
+        
+        { name: 'Dashboard Direktur', path: '/direktur/dashboard', icon: <PieChart size={32} />, color: '#8b5cf6', desc: 'Executive Helicopter View & Analitik' },
+        { name: 'Pantauan Alumni', path: '/alumni/dashboard', icon: <Plane size={32} />, color: '#0ea5e9', desc: 'Tracking Eks-Jepang & Status Freeze' },
+        { name: 'Portal Mitra Lokal', path: '/mitra/dashboard', icon: <Building size={32} />, color: '#64748b', desc: 'B2B Portal untuk Agensi & Sekolah' },
     ];
 
     return (
@@ -58,7 +61,7 @@ export default function DashboardSuperAdmin() {
                 {modules.map((mod, idx) => (
                     <div 
                         key={idx} 
-                        onClick={() => navigate(mod.path)}
+                        onClick={() => navigate(mod.path, { state: mod.stateParams })}
                         style={{ 
                             background: '#1e293b', 
                             border: `1px solid ${mod.color}40`, 
