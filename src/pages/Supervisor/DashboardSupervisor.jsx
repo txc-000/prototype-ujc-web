@@ -7,6 +7,7 @@ import MasterKaisha from './MasterKaisha';
 import MasterKumiai from './MasterKumiai';
 import MasterPengguna from './MasterPengguna';
 import MasterBidang from './MasterBidang'; 
+import LaporanEvaluasiMitra from './LaporanEvaluasiMitra'; // <-- IMPORT BARU
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
@@ -279,7 +280,7 @@ export default function DashboardSupervisor() {
             if (data) {
                 let filteredData = data;
                 if (activeTab === 'LULUS') filteredData = data.filter(s => cleanStr(s.status_akhir) === 'lulus');
-                else if (activeTab === 'GAGAL') filteredData = data.filter(s => cleanStr(s.status_akhir) === 'gagal');
+                else if (activeTab === 'GAGAL') filteredData = data.filter(s => cleanStr(s.status_akhir) === 'gagal' || cleanStr(s.status_akhir) === 'gagal seleksi' || s.tahap_sekarang === 'ARSIP / GAGAL');
                 else if (activeTab === 'REGULER') filteredData = data.filter(s => ['PENDIDIKAN REGULER', 'AVAILABLE'].includes(s.tahap_sekarang) && isProses(s));
                 else if (activeTab === 'REKRUTMEN') filteredData = data.filter(s => ['PRA_MENSETSU', 'INTERVIEW', 'MATCHED'].includes(s.tahap_sekarang) && isProses(s));
                 else if (activeTab === 'DOKUMEN') filteredData = data.filter(s => ['PENGUMPULAN BERKAS', 'TTD KONTRAK', 'APPLY COE', 'APPLY VISA'].includes(s.tahap_sekarang) && isProses(s));
@@ -423,7 +424,8 @@ export default function DashboardSupervisor() {
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'TRANSAKSI')}>
                             <button onClick={() => { setActiveMenu('JOB_ORDER'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'JOB_ORDER')}><div style={subDot(activeMenu === 'JOB_ORDER')}></div> Job Order Kaisha</button>
-                            <button onClick={() => navigate('/reguler/dashboard')} style={subMenuS(false)}><div style={subDot(false)}></div> Pendaftaran Baru</button>                        </div>
+                            <button onClick={() => navigate('/reguler/dashboard')} style={subMenuS(false)}><div style={subDot(false)}></div> Pendaftaran Baru</button> 
+                        </div>
                     </div>
 
                     <div>
@@ -432,6 +434,7 @@ export default function DashboardSupervisor() {
                             <ChevronDown size={16} style={{ transform: openSubMenu === 'LAPORAN' ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
                         </button>
                         <div style={subMenuContainer(openSubMenu === 'LAPORAN')}>
+                            <button onClick={() => { setActiveMenu('EVALUASI_MITRA'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'EVALUASI_MITRA')}><div style={subDot(activeMenu === 'EVALUASI_MITRA')}></div> Evaluasi Mitra LPK</button>
                             <button onClick={() => { setActiveMenu('LAPORAN_LULUS'); setActiveTab('LULUS'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_LULUS')}><div style={subDot(activeMenu === 'LAPORAN_LULUS')}></div> Daftar Peserta Lolos</button>
                             <button onClick={() => { setActiveMenu('LAPORAN_GAGAL'); setActiveTab('GAGAL'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_GAGAL')}><div style={subDot(activeMenu === 'LAPORAN_GAGAL')}></div> Laporan Gagal</button>
                             <button onClick={() => { setActiveMenu('LAPORAN_PERUSAHAAN'); setActiveTab('LULUS'); setActiveJobOrder(null); }} style={subMenuS(activeMenu === 'LAPORAN_PERUSAHAAN')}><div style={subDot(activeMenu === 'LAPORAN_PERUSAHAAN')}></div> Sebaran Penempatan</button>
@@ -485,6 +488,13 @@ export default function DashboardSupervisor() {
                     </div>
                 ) : !isLoading && (
                     <>
+                        {/* ── TAB EVALUASI MITRA (BARU DIMASUKKAN DI SINI) ── */}
+                        {activeMenu === 'EVALUASI_MITRA' && (
+                            <div className="fade-in">
+                                <LaporanEvaluasiMitra />
+                            </div>
+                        )}
+
                         {/* ── DASHBOARD (BERANDA ANALITIK) ── */}
                         {activeMenu === 'DASHBOARD' && (
                             <div className="fade-in">

@@ -4,7 +4,8 @@ import {
     Users, FileText, Activity, CheckCircle, Search, Plus, Loader2, Edit3, Camera, 
     X, Trash2, Award, UserCircle, ClipboardList, MessageCircle, PhoneOutgoing,
     Briefcase, UserCheck, FileCheck, ArrowRightCircle, PlaneTakeoff, RefreshCw, 
-    Building2, Building, BookA, BrainCircuit, Printer, Save
+    Building2, Building, BookA, BrainCircuit, Printer, Save, GraduationCap, Layers, 
+    PieChart, BookOpen, XCircle, FileSearch
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import RegistrationPhotoUpload from './RegistrationPhotoUpload'; 
@@ -27,7 +28,10 @@ export default function DashboardReguler() {
 
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterAsal, setFilterAsal] = useState('SEMUA'); // BARU: FILTER SISWA MITRA VS REGULER
+    const [filterAsal, setFilterAsal] = useState('SEMUA'); 
+    
+    // ── STATE EVALUASI MITRA ──
+    const [evalMonth, setEvalMonth] = useState(new Date().toISOString().slice(0, 7)); // Format YYYY-MM
     
     // ── STATE USER LOGIN ──
     const [currentUser, setCurrentUser] = useState(null);
@@ -35,7 +39,10 @@ export default function DashboardReguler() {
     const [myPoints, setMyPoints] = useState(0);
 
     const [selectedJobOrder, setSelectedJobOrder] = useState(null);
+    
+    // ── STATE MODAL VIEW DATA ──
     const [viewRaportStudent, setViewRaportStudent] = useState(null);
+    const [reviewStudentModal, setReviewStudentModal] = useState(null); // STATE BARU UNTUK REVIEW PROFIL
 
     // ── STATE FORM & MODAL PENDAFTARAN ──
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -47,7 +54,7 @@ export default function DashboardReguler() {
     const [evalModal, setEvalModal] = useState(null); 
     const [evalFormData, setEvalFormData] = useState({ medical_checkup_status: '' });
 
-    // ── STATE MODAL EDUKASI / DIKLAT (BARU DIINTEGRASIKAN) ──
+    // ── STATE MODAL EDUKASI / DIKLAT ──
     const [isEduEvalOpen, setIsEduEvalOpen] = useState(false);
     const [eduEvalStudent, setEduEvalStudent] = useState(null);
     const [eduEvalForm, setEduEvalForm] = useState({ jenis_tes: 'UJIAN BAB', nilai: '', catatan: '' });
@@ -61,11 +68,9 @@ export default function DashboardReguler() {
     });
     const [raportPendidikanList, setRaportPendidikanList] = useState([]);
 
-    // State Modal Terbang (Input Tgl Entri)
     const [flyModal, setFlyModal] = useState(null);
     const [flyDate, setFlyDate] = useState('');
 
-    // ── STATE CLONE NIK / RE-ENTRY ──
     const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
     const [cloneNik, setCloneNik] = useState('');
 
@@ -130,7 +135,8 @@ export default function DashboardReguler() {
 
             if (activeTab === 'PENDAFTARAN') query = query.in('tahap_sekarang', ['REGISTRASI']);
             else if (activeTab === 'SELEKSI') query = query.in('tahap_sekarang', ['SELEKSI AWAL', 'WAWANCARA MITRA']);
-            else if (activeTab === 'DIKLAT') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT']);
+            else if (activeTab === 'KELAS_REGULER') query = query.eq('tahap_sekarang', 'PENDIDIKAN REGULER');
+            else if (activeTab === 'KELAS_DIKLAT') query = query.eq('tahap_sekarang', 'PENDIDIKAN DIKLAT');
             else if (activeTab === 'PEMANGGILAN') query = query.or('tahap_sekarang.eq.AVAILABLE,status_akhir.eq.BELUM DAPAT JOB');
             else if (activeTab === 'MATCHING') query = query.in('tahap_sekarang', ['AVAILABLE', 'PRA_MENSETSU', 'INTERVIEW']);
             else if (activeTab === 'PASCA_INTERVIEW') query = query.in('tahap_sekarang', ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN']);
@@ -348,6 +354,108 @@ export default function DashboardReguler() {
         } catch (err) { alert(err.message); }
     };
 
+    // ── FUNGSI GAGAL SELEKSI ──
+    const handleGagalSeleksi = async (id, nama) => {
+        if (!window.confirm(`Yakin ingin menandai ${nama} sebagai Gagal Seleksi/Unfit? Data akan diarsipkan.`)) return;
+        try {
+            const { error } = await supabase.from('students').update({ 
+                tahap_sekarang: 'ARSIP / GAGAL', 
+                status_akhir: 'GAGAL SELEKSI',
+                medical_checkup_status: 'UNFIT',
+                updated_at: new Date() 
+            }).eq('id', id);
+            if (error) throw error;
+            alert(`Siswa ${nama} telah diarsipkan karena gagal seleksi.`);
+            fetchStudents();
+        } catch (error) { alert("Gagal: " + error.message); }
+    };
+
+    // ── PARSER JSON AMAN UNTUK REVIEW PROFIL ──
+    const parseHistory = (data) => {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        try { return JSON.parse(data); } catch { return []; }
+    };
+
+    // ── LOGIKA KALKULASI LAPORAN EVALUASI MITRA (DENGAN TERBANG) ──
+    const getEvaluasiMitraData = () => {
+        return students.filter(s => s.lpk_asal && s.lpk_asal.trim() !== '' && s.created_at && s.created_at.startsWith(evalMonth)).reduce((acc, s) => {
+            const mitra = s.lpk_asal;
+            if (!acc[mitra]) acc[mitra] = { total: 0, lolos: 0, terbang: 0, gagal: 0, proses: 0 };
+            
+            acc[mitra].total++;
+
+            const isTerbang = s.tahap_sekarang === 'SIAP BERANGKAT';
+            const isLolos = s.medical_checkup_status === 'FIT' || ['PENDIDIKAN DIKLAT', 'AVAILABLE', 'PRA_MENSETSU', 'INTERVIEW', 'MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN'].includes(s.tahap_sekarang);
+            const isGagal = s.status_akhir === 'GAGAL SELEKSI' || s.tahap_sekarang === 'ARSIP / GAGAL' || s.medical_checkup_status === 'UNFIT';
+
+            if (isTerbang) acc[mitra].terbang++;
+            else if (isGagal) acc[mitra].gagal++;
+            else if (isLolos) acc[mitra].lolos++;
+            else acc[mitra].proses++;
+
+            return acc;
+        }, {});
+    };
+
+    const evalData = getEvaluasiMitraData();
+
+    // ── FUNGSI CETAK PDF LAPORAN ──
+    const handlePrintEvaluasi = () => {
+        const printWindow = window.open('', '_blank');
+        const rows = Object.entries(evalData).map(([mitra, data]) => `
+            <tr>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; font-weight: bold; color: #1e293b;">${mitra}</td>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold;">${data.total}</td>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: center; color: #16a34a; font-weight: bold;">${data.lolos}</td>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: center; color: #8b5cf6; font-weight: bold;">${data.terbang}</td>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: center; color: #dc2626; font-weight: bold;">${data.gagal}</td>
+                <td style="padding: 10px; border: 1px solid #cbd5e1; text-align: center; color: #d97706; font-weight: bold;">${data.proses}</td>
+            </tr>
+        `).join('');
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Laporan Evaluasi Mitra LPK - ${evalMonth}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
+                        h2 { text-align: center; color: #101869; margin-bottom: 5px; }
+                        .subtitle { text-align: center; margin-bottom: 30px; color: #64748b; font-size: 14px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th { background-color: #f8fafc; font-weight: bold; text-transform: uppercase; font-size: 12px; color: #475569; border: 1px solid #cbd5e1; padding: 12px; }
+                        .footer { margin-top: 50px; text-align: right; font-size: 12px; color: #64748b; }
+                    </style>
+                </head>
+                <body>
+                    <h2>LAPORAN EVALUASI PENGIRIMAN KANDIDAT LPK MITRA</h2>
+                    <div class="subtitle">Periode Pendaftaran: <b>Bulan ${evalMonth}</b></div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Mitra / LPK Asal</th>
+                                <th>Total Pengajuan</th>
+                                <th>Lolos Seleksi (Diklat/Match)</th>
+                                <th>Berhasil Terbang (Jepang)</th>
+                                <th>Gagal Seleksi (Arsip)</th>
+                                <th>Masih Proses Seleksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows || '<tr><td colspan="6" style="text-align:center; padding:20px;">Tidak ada data pendaftaran Mitra pada periode ini.</td></tr>'}
+                        </tbody>
+                    </table>
+                    <div class="footer">
+                        <p>Dicetak secara otomatis oleh Sistem LPK Universal Japan Course</p>
+                        <p>Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</p>
+                    </div>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        setTimeout(() => { printWindow.print(); }, 300);
+    };
+
     // ── FILTER DATA SISWA (SEARCH & ASAL SISWA) ──
     const filteredStudents = students.filter(s => {
         const isMitra = s.lpk_asal && s.lpk_asal.trim() !== '';
@@ -388,13 +496,19 @@ export default function DashboardReguler() {
                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginBottom: '5px' }}>FASE REGULER & DIKLAT</div>
                     <button onClick={() => setActiveTab('PENDAFTARAN')} style={activeTab === 'PENDAFTARAN' ? activeMenuS : inactiveMenuS}><Users size={18} /> Pendaftaran Baru</button>
                     <button onClick={() => setActiveTab('SELEKSI')} style={activeTab === 'SELEKSI' ? activeMenuS : inactiveMenuS}><Activity size={18} /> Seleksi & MCU 1</button>
-                    <button onClick={() => setActiveTab('DIKLAT')} style={activeTab === 'DIKLAT' ? activeMenuS : inactiveMenuS}><FileText size={18} /> Kelas Pendidikan (Diklat)</button>
-                    <button onClick={() => setActiveTab('PEMANGGILAN')} style={activeTab === 'PEMANGGILAN' ? activeMenuS : inactiveMenuS}><PhoneOutgoing size={18} /> Daftar Pemanggilan</button>
                     
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>AKADEMIK (TERPISAH)</div>
+                    <button onClick={() => setActiveTab('KELAS_REGULER')} style={activeTab === 'KELAS_REGULER' ? activeMenuS : inactiveMenuS}><BookOpen size={18} /> 1. Kelas Reguler (UJC)</button>
+                    <button onClick={() => setActiveTab('KELAS_DIKLAT')} style={activeTab === 'KELAS_DIKLAT' ? activeMenuS : inactiveMenuS}><GraduationCap size={18} /> 2. Kelas Diklat (Bypass)</button>
+
                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>FASE REKRUTMEN</div>
+                    <button onClick={() => setActiveTab('PEMANGGILAN')} style={activeTab === 'PEMANGGILAN' ? activeMenuS : inactiveMenuS}><PhoneOutgoing size={18} /> Daftar Pemanggilan</button>
                     <button onClick={() => setActiveTab('JOB_ORDER')} style={activeTab === 'JOB_ORDER' ? activeMenuS : inactiveMenuS}><Briefcase size={18} /> Manajemen Job Order</button>
                     <button onClick={() => setActiveTab('MATCHING')} style={activeTab === 'MATCHING' ? activeMenuS : inactiveMenuS}><UserCheck size={18} /> Proses Wawancara</button>
-                    <button onClick={() => setActiveTab('PASCA_INTERVIEW')} style={activeTab === 'PASCA_INTERVIEW' ? activeMenuS : inactiveMenuS}><FileCheck size={18} /> Pasca Lolos Wawancara</button>
+                    <button onClick={() => setActiveTab('PASCA_INTERVIEW')} style={activeTab === 'PASCA_INTERVIEW' ? activeMenuS : inactiveMenuS}><FileCheck size={18} /> Pasca Lolos</button>
+
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>LAPORAN & EVALUASI</div>
+                    <button onClick={() => setActiveTab('EVALUASI_MITRA')} style={activeTab === 'EVALUASI_MITRA' ? activeMenuS : inactiveMenuS}><PieChart size={18} /> Evaluasi Kinerja Mitra</button>
                 </nav>
 
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -408,61 +522,118 @@ export default function DashboardReguler() {
 
             {/* ── MAIN CONTENT ── */}
             <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-                <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-                    <div>
-                        <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900 }}>
-                            {activeTab === 'PENDAFTARAN' && (isFormOpen ? (editingId ? 'Edit Data Pendaftar' : 'Form Pendaftaran Baru') : 'Manajemen Pendaftar')}
-                            {activeTab === 'SELEKSI' && 'Proses Seleksi & Kesehatan'}
-                            {activeTab === 'DIKLAT' && 'Kelas Pendidikan (Reguler & Diklat)'}
-                            {activeTab === 'PEMANGGILAN' && 'Daftar Pemanggilan Siswa'}
-                            {activeTab === 'JOB_ORDER' && 'Manajemen Job Order (Jepang)'}
-                            {activeTab === 'MATCHING' && 'Matching & Proses Wawancara'}
-                            {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara (Dokumen)'}
-                        </h1>
-                        <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem' }}>
-                            {activeTab === 'DIKLAT' && 'Input absensi, evaluasi harian, dan penerbitan raport/sertifikat siswa.'}
-                            {activeTab === 'PEMANGGILAN' && 'Pantau dan panggil siswa yang Available (siap interview) atau Tanggungan.'}
-                            {activeTab === 'MATCHING' && 'Siswa berstatus AVAILABLE siap dimasukkan ke Job Order.'}
-                            {activeTab === 'PASCA_INTERVIEW' && 'Siswa MATCHED diproses dokumennya hingga Input Tanggal Entri (Berangkat ke Jepang).'}
-                            {['PENDAFTARAN','SELEKSI','JOB_ORDER'].includes(activeTab) && 'Kelola data, evaluasi, dan pantau perkembangan siswa.'}
-                        </p>
-                    </div>
-                    
-                    {!isFormOpen && (
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            {/* ── FILTER ASAL SISWA (Hanya tampil jika bukan di tab Job Order) ── */}
-                            {activeTab !== 'JOB_ORDER' && (
-                                <select 
-                                    value={filterAsal} 
-                                    onChange={(e) => setFilterAsal(e.target.value)} 
-                                    style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 700, color: '#475569', background: '#f8fafc', cursor: 'pointer' }}
-                                >
-                                    <option value="SEMUA">Semua Asal Siswa</option>
-                                    <option value="REGULER">Siswa UJC (Reguler)</option>
-                                    <option value="MITRA">Siswa Mitra LPK</option>
-                                </select>
-                            )}
-
-                            <div style={{ position: 'relative' }}>
-                                <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                                <input type="text" placeholder="Cari data..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' }} />
-                            </div>
-                            
-                            {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsCloneModalOpen(true)} style={{...btnPrimary, background: '#f59e0b', color: '#fff'}}><RefreshCw size={18}/> Re-Entry</button>}
-                            {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsFormOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Pendaftar</button>}
-                            
-                            {activeTab === 'JOB_ORDER' && (<>
-                                <button onClick={() => navigate('/master-kumiai')} style={{...btnPrimary, background: '#8b5cf6'}}><Building size={18}/> Master Kumiai</button>
-                                <button onClick={() => navigate('/master-kaisha')} style={{...btnPrimary, background: '#ec4899'}}><Building2 size={18}/> Master Kaisha</button>
-                                <button onClick={() => setIsAddJOOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Job Order</button>
-                            </>)}
+                
+                {/* ── HEADER NORMAL ── */}
+                {activeTab !== 'EVALUASI_MITRA' && (
+                    <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
+                        <div>
+                            <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: '0 0 10px 0', fontWeight: 900 }}>
+                                {activeTab === 'PENDAFTARAN' && (isFormOpen ? (editingId ? 'Edit Data Pendaftar' : 'Form Pendaftaran Baru') : 'Manajemen Pendaftar')}
+                                {activeTab === 'SELEKSI' && 'Proses Seleksi & Kesehatan'}
+                                {activeTab === 'KELAS_REGULER' && 'Internal: Kelas Reguler UJC'}
+                                {activeTab === 'KELAS_DIKLAT' && 'Kelas Diklat (Gabungan UJC & Mitra)'}
+                                {activeTab === 'PEMANGGILAN' && 'Daftar Pemanggilan Siswa'}
+                                {activeTab === 'JOB_ORDER' && 'Manajemen Job Order (Jepang)'}
+                                {activeTab === 'MATCHING' && 'Matching & Proses Wawancara'}
+                                {activeTab === 'PASCA_INTERVIEW' && 'Pasca Lolos Wawancara (Dokumen)'}
+                            </h1>
+                            <p style={{ color: '#64748b', margin: 0, fontSize: '1.05rem' }}>
+                                {activeTab === 'KELAS_REGULER' && 'Tahap awal pembelajaran bahasa Jepang bagi siswa internal UJC.'}
+                                {activeTab === 'KELAS_DIKLAT' && 'Tahap pemantapan dan persiapan matching untuk semua jalur.'}
+                                {activeTab === 'PEMANGGILAN' && 'Pantau dan panggil siswa yang Available (siap interview) atau Tanggungan.'}
+                                {activeTab === 'MATCHING' && 'Siswa berstatus AVAILABLE siap dimasukkan ke Job Order.'}
+                                {activeTab === 'PASCA_INTERVIEW' && 'Siswa MATCHED diproses dokumennya hingga Input Tanggal Entri (Berangkat ke Jepang).'}
+                                {['PENDAFTARAN','SELEKSI','JOB_ORDER'].includes(activeTab) && 'Kelola data, evaluasi, dan pantau perkembangan siswa.'}
+                            </p>
                         </div>
-                    )}
-                </header>
+                        
+                        {!isFormOpen && (
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                {activeTab !== 'JOB_ORDER' && (
+                                    <select 
+                                        value={filterAsal} 
+                                        onChange={(e) => setFilterAsal(e.target.value)} 
+                                        style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontWeight: 700, color: '#475569', background: '#f8fafc', cursor: 'pointer' }}
+                                    >
+                                        <option value="SEMUA">Semua Asal Siswa</option>
+                                        <option value="REGULER">Siswa UJC (Reguler)</option>
+                                        <option value="MITRA">Siswa Mitra LPK</option>
+                                    </select>
+                                )}
+
+                                <div style={{ position: 'relative' }}>
+                                    <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
+                                    <input type="text" placeholder="Cari data..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' }} />
+                                </div>
+                                
+                                {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsCloneModalOpen(true)} style={{...btnPrimary, background: '#f59e0b', color: '#fff'}}><RefreshCw size={18}/> Re-Entry</button>}
+                                {activeTab === 'PENDAFTARAN' && <button onClick={() => setIsFormOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Pendaftar</button>}
+                                
+                                {activeTab === 'JOB_ORDER' && (<>
+                                    <button onClick={() => navigate('/master-kumiai')} style={{...btnPrimary, background: '#8b5cf6'}}><Building size={18}/> Master Kumiai</button>
+                                    <button onClick={() => navigate('/master-kaisha')} style={{...btnPrimary, background: '#ec4899'}}><Building2 size={18}/> Master Kaisha</button>
+                                    <button onClick={() => setIsAddJOOpen(true)} style={btnPrimary}><Plus size={18}/> Tambah Job Order</button>
+                                </>)}
+                            </div>
+                        )}
+                    </header>
+                )}
 
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
                     
-                    {/* ================== FORM PENDAFTARAN (ADA DROPDOWN PROGRAM) ================== */}
+                    {/* ── TAB EVALUASI MITRA (BARU) ── */}
+                    {activeTab === 'EVALUASI_MITRA' && (
+                        <div className="fade-in">
+                            <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                                <div>
+                                    <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: 0, fontWeight: 900 }}>Laporan Evaluasi Mitra</h1>
+                                    <p style={{ color: '#64748b', marginTop: '5px', fontSize: '1.05rem' }}>Rekap performa kelulusan siswa titipan dari tiap LPK.</p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                    <div>
+                                        <label style={{display:'block', fontSize:'0.75rem', fontWeight:800, color:'#64748b', marginBottom:'5px', textTransform:'uppercase'}}>Pilih Bulan Pendaftaran</label>
+                                        <input type="month" value={evalMonth} onChange={(e) => setEvalMonth(e.target.value)} style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width:'180px'}} />
+                                    </div>
+                                    <button onClick={handlePrintEvaluasi} style={{...btnPrimary, height: '42px', marginTop: '20px', background: '#059669'}}>
+                                        <Printer size={18}/> Cetak Laporan PDF
+                                    </button>
+                                </div>
+                            </header>
+
+                            <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                    <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                        <tr>
+                                            <th style={thStyle}>Nama Mitra LPK Asal</th>
+                                            <th style={{...thStyle, textAlign:'center'}}>Total Pengajuan</th>
+                                            <th style={{...thStyle, textAlign:'center'}}>Lolos Seleksi (Diklat / Match)</th>
+                                            <th style={{...thStyle, textAlign:'center'}}>Berhasil Terbang (Jepang)</th>
+                                            <th style={{...thStyle, textAlign:'center'}}>Gagal Seleksi (Arsip)</th>
+                                            <th style={{...thStyle, textAlign:'center'}}>Masih Proses</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {isLoading ? (
+                                            <tr><td colSpan="6" style={{textAlign:'center', padding:'50px'}}><Loader2 className="animate-spin" size={30} style={{margin:'0 auto'}}/></td></tr>
+                                        ) : Object.keys(evalData).length === 0 ? (
+                                            <tr><td colSpan="6" style={{textAlign:'center', padding:'40px', color:'#94a3b8', fontWeight:700}}>Tidak ada data pengajuan mitra pada bulan {evalMonth}.</td></tr>
+                                        ) : Object.entries(evalData).map(([mitra, data]) => (
+                                            <tr key={mitra} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{...tdStyle, fontWeight: 800, color: brandNavy}}><Building2 size={16} style={{display:'inline', marginBottom:'-3px', marginRight:'5px'}}/> {mitra}</td>
+                                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem'}}>{data.total}</td>
+                                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#10b981'}}>{data.lolos}</td>
+                                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#8b5cf6'}}>{data.terbang}</td>
+                                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#ef4444'}}>{data.gagal}</td>
+                                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#f59e0b'}}>{data.proses}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ================== FORM PENDAFTARAN ================== */}
                     {isFormOpen && activeTab === 'PENDAFTARAN' && (
                         <div style={{ background: 'white', padding: '35px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderTop: `5px solid ${brandNavy}`, marginBottom: '40px' }}>
                             <form onSubmit={handleSubmit}>
@@ -549,17 +720,17 @@ export default function DashboardReguler() {
                     )}
 
                     {/* ================== TABEL UTAMA SISWA ================== */}
-                    {!isFormOpen && activeTab !== 'JOB_ORDER' && (
+                    {!isFormOpen && activeTab !== 'JOB_ORDER' && activeTab !== 'EVALUASI_MITRA' && (
                         <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                                     <tr>
                                         <th style={thStyle}>Identitas Siswa</th>
                                         <th style={thStyle}>
-                                            {activeTab === 'DIKLAT' ? 'Nilai Akademik & Tes Terakhir' : ['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? 'Perusahaan Tujuan' : 'Status Tahapan'}
+                                            {activeTab === 'KELAS_REGULER' || activeTab === 'KELAS_DIKLAT' ? 'Nilai Akademik & Tes Terakhir' : ['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) ? 'Perusahaan Tujuan' : 'Status Tahapan'}
                                         </th>
                                         {activeTab === 'SELEKSI' && <th style={thStyle}>Status MCU & Wawancara</th>}
-                                        {activeTab === 'DIKLAT' && <th style={thStyle}>Status Kelas</th>}
+                                        {(activeTab === 'KELAS_REGULER' || activeTab === 'KELAS_DIKLAT') && <th style={thStyle}>Status Kelas</th>}
                                         {activeTab === 'PEMANGGILAN' && <th style={thStyle}>Keterangan Panggilan</th>}
                                         {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <th style={thStyle}>Tahap Seleksi</th>}
                                         <th style={{...thStyle, textAlign: 'center'}}>Aksi / Update Alur</th>
@@ -576,23 +747,31 @@ export default function DashboardReguler() {
                                                 <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748b', fontWeight: 600 }}>NIK: {student.nik} | {student.telepon || '-'}</div>
                                                 
                                                 {/* ── LABEL MITRA ── */}
-                                                {student.lpk_asal && student.lpk_asal.trim() !== '' && (
+                                                {student.lpk_asal && student.lpk_asal.trim() !== '' ? (
                                                     <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 800, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <Building2 size={12}/> Mitra: {student.lpk_asal}
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 800, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <UserCircle size={12}/> Reguler UJC
                                                     </div>
                                                 )}
 
                                                 <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                                    {['MATCHING', 'PEMANGGILAN', 'DIKLAT', 'PASCA_INTERVIEW'].includes(activeTab) && (
+                                                    {['MATCHING', 'PEMANGGILAN', 'KELAS_REGULER', 'KELAS_DIKLAT', 'PASCA_INTERVIEW'].includes(activeTab) && (
                                                         <button onClick={() => setViewRaportStudent(student)} style={{ border:'none', background:'none', color:brandNavy, fontWeight:800, padding:0, cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'0.75rem' }}><ClipboardList size={14}/> Detail Raport</button>
                                                     )}
                                                     {activeTab === 'MATCHING' && (
                                                         <button onClick={() => window.open(`/print-cv/${student.id}`, '_blank')} style={{ border:'none', background:'none', color:'#ec4899', fontWeight:800, padding:0, cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'0.75rem' }}><FileText size={14}/> Generate CV</button>
                                                     )}
+                                                    {/* TOMBOL REVIEW PROFIL LENGKAP */}
+                                                    <button onClick={() => setReviewStudentModal(student)} style={{ border:'none', background:'none', color:'#059669', fontWeight:800, padding:0, cursor:'pointer', display:'flex', alignItems:'center', gap:'4px', fontSize:'0.75rem' }} title="Lihat CV dan Rincian Pendaftaran">
+                                                        <FileSearch size={14}/> Review Profil
+                                                    </button>
                                                 </div>
                                             </td>
 
-                                            {activeTab === 'DIKLAT' ? (
+                                            {activeTab === 'KELAS_REGULER' || activeTab === 'KELAS_DIKLAT' ? (
                                                 <td style={tdStyle}>
                                                     <span style={{ fontWeight: 800, fontSize: '1.2rem', color: brandNavy }}>{student.nilai_bahasa || 0}</span> / 100
                                                     {lastRecord ? (
@@ -615,7 +794,7 @@ export default function DashboardReguler() {
                                                 </div>
                                             </td>}
                                             
-                                            {activeTab === 'DIKLAT' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', display: 'inline-block', marginBottom: '5px' }}>{student.tahap_sekarang}</span></td>}
+                                            {(activeTab === 'KELAS_REGULER' || activeTab === 'KELAS_DIKLAT') && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', display: 'inline-block', marginBottom: '5px' }}>{student.tahap_sekarang}</span></td>}
                                             
                                             {activeTab === 'PEMANGGILAN' && <td style={tdStyle}><span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '20px', fontWeight: 800, background: student.status_akhir === 'BELUM DAPAT JOB' ? '#fee2e2' : '#f1f5f9', color: student.status_akhir === 'BELUM DAPAT JOB' ? '#991b1b' : '#475569' }}>{student.status_akhir === 'BELUM DAPAT JOB' ? 'Tanggungan (Belum Dapat Job)' : 'Menunggu Job (Available)'}</span></td>}
                                             {['MATCHING', 'PASCA_INTERVIEW'].includes(activeTab) && <td style={tdStyle}><div style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', background: '#eff6ff', color: '#2563eb', fontWeight: 800, display: 'inline-block' }}>{student.tahap_sekarang}</div></td>}
@@ -623,13 +802,43 @@ export default function DashboardReguler() {
                                             <td style={tdStyle}>
                                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                                     {activeTab === 'PENDAFTARAN' && (<><button onClick={() => handleEditInit(student)} style={actionBtn('#3b82f6')} title="Edit"><Edit3 size={18}/></button><button onClick={() => setUploadModalId(student.id)} style={actionBtn('#10b981')} title="Foto"><Camera size={18}/></button><button onClick={() => updateStage(student.id, student.nama_lengkap, 'SELEKSI AWAL', 'Dipindah ke Seleksi')} style={{...btnAction, background: brandNavy, color: 'white'}}>Proses Seleksi</button></>)}
+                                                    
+                                                    {/* ── TOMBOL AKSI UNTUK TAB SELEKSI (ADA TOMBOL GAGAL) ── */}
                                                     {activeTab === 'SELEKSI' && (<>
+                                                        <button 
+                                                            onClick={() => handleGagalSeleksi(student.id, student.nama_lengkap)} 
+                                                            style={{...btnAction, background: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5'}} 
+                                                            title="Gagal Seleksi / Unfit"
+                                                        >
+                                                            <XCircle size={16}/> Gagal
+                                                        </button>
+
                                                         <button onClick={() => openEvalModal(student)} style={actionBtn('#f59e0b')} title="Input Evaluasi & MCU"><ClipboardList size={18}/></button>
                                                         <button onClick={() => handleHubungiSiswa(student.nama_lengkap, student.telepon, 'SELEKSI')} style={{...actionBtn('#10b981'), background: '#ecfdf5'}} title="Panggil via WA"><MessageCircle size={18} color="#10b981"/></button>
-                                                        <button onClick={() => updateStage(student.id, student.nama_lengkap, 'PENDIDIKAN REGULER', 'Masuk Kelas')} style={{...btnAction, background: brandNavy, color: 'white'}}>Masuk Kelas</button>
+                                                        
+                                                        <button 
+                                                            onClick={() => {
+                                                                const isMitra = student.lpk_asal && student.lpk_asal.trim() !== '';
+                                                                const nextStage = isMitra ? 'PENDIDIKAN DIKLAT' : 'PENDIDIKAN REGULER';
+                                                                const msgDesc = isMitra ? 'Siswa Mitra dibypass ke Pendidikan Diklat' : 'Masuk Kelas Reguler';
+                                                                updateStage(student.id, student.nama_lengkap, nextStage, msgDesc);
+                                                            }} 
+                                                            style={{...btnAction, background: brandNavy, color: 'white'}}
+                                                        >
+                                                            {student.lpk_asal && student.lpk_asal.trim() !== '' ? 'Bypass ke Diklat' : 'Masuk Kelas'}
+                                                        </button>
                                                     </>)}
                                                     
-                                                    {activeTab === 'DIKLAT' && (
+                                                    {/* ── KELAS REGULER & DIKLAT ── */}
+                                                    {activeTab === 'KELAS_REGULER' && (
+                                                        <>
+                                                            <button onClick={() => openEduEvalModal(student)} style={actionBtn('#f59e0b')} title="Input Evaluasi Harian"><Edit3 size={16}/></button>
+                                                            <button onClick={() => openRaportModal(student)} style={actionBtn('#8b5cf6')} title="Input Raport & History"><BookA size={16}/></button>
+                                                            <button onClick={() => updateStage(student.id, student.nama_lengkap, 'PENDIDIKAN DIKLAT', 'Siswa naik ke kelas Diklat!')} style={{...btnAction, background: '#8b5cf6', color: 'white'}}>Naik ke Diklat <ArrowRightCircle size={16}/></button>
+                                                        </>
+                                                    )}
+
+                                                    {activeTab === 'KELAS_DIKLAT' && (
                                                         <>
                                                             <button onClick={() => openEduEvalModal(student)} style={actionBtn('#f59e0b')} title="Input Evaluasi Harian"><Edit3 size={16}/></button>
                                                             <button onClick={() => openRaportModal(student)} style={actionBtn('#8b5cf6')} title="Input Raport & History"><BookA size={16}/></button>
@@ -723,6 +932,99 @@ export default function DashboardReguler() {
                         </div>
                     )}
                 </div>
+
+                {/* ── MODAL REVIEW DATA SISWA (PROFIL LENGKAP) ── */}
+                {reviewStudentModal && (
+                    <div style={modalOverlay}>
+                        <div style={{...modalContent, width: '850px', maxWidth: '95vw', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column'}}>
+                            <div style={{ background: brandNavy, padding: '25px 30px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px' }}><FileSearch size={22}/> Review Profil Kandidat</h3>
+                                    <p style={{ margin: '5px 0 0 0', color: '#cbd5e1', fontSize: '0.9rem' }}>{reviewStudentModal.nama_lengkap} • {reviewStudentModal.program}</p>
+                                </div>
+                                <button onClick={() => setReviewStudentModal(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={24}/></button>
+                            </div>
+                            <div style={{ padding: '30px', maxHeight: '70vh', overflowY: 'auto', background: '#f8fafc' }}>
+                                
+                                {/* 1. Rangkuman Identitas */}
+                                <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+                                    <h4 style={{ margin: '0 0 15px 0', color: brandNavy, fontWeight: 800, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>IDENTITAS DASAR</h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                        <div><span style={revLabel}>NIK:</span> <span style={revVal}>{reviewStudentModal.nik}</span></div>
+                                        <div><span style={revLabel}>Tempat, Tgl Lahir:</span> <span style={revVal}>{reviewStudentModal.tempat_lahir}, {new Date(reviewStudentModal.tanggal_lahir).toLocaleDateString('id-ID')}</span></div>
+                                        <div><span style={revLabel}>Jenis Kelamin / Agama:</span> <span style={revVal}>{reviewStudentModal.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'} / {reviewStudentModal.agama || '-'}</span></div>
+                                        <div><span style={revLabel}>Telepon / Email:</span> <span style={revVal}>{reviewStudentModal.telepon} / {reviewStudentModal.email || '-'}</span></div>
+                                        <div><span style={revLabel}>Tinggi / Berat:</span> <span style={revVal}>{reviewStudentModal.tinggi_badan || '-'} cm / {reviewStudentModal.berat_badan || '-'} kg</span></div>
+                                        <div><span style={revLabel}>Golongan Darah:</span> <span style={revVal}>{reviewStudentModal.golongan_darah || '-'}</span></div>
+                                        <div><span style={revLabel}>Asal Sekolah:</span> <span style={revVal}>{reviewStudentModal.asal_sekolah || '-'}</span></div>
+                                        <div><span style={revLabel}>LPK Asal (Mitra):</span> <span style={{...revVal, color: reviewStudentModal.lpk_asal ? '#3b82f6' : '#1e293b'}}>{reviewStudentModal.lpk_asal || 'Reguler UJC'}</span></div>
+                                    </div>
+                                </div>
+
+                                {/* 2. Riwayat Pendidikan */}
+                                <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+                                    <h4 style={{ margin: '0 0 15px 0', color: brandNavy, fontWeight: 800, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>RIWAYAT PENDIDIKAN</h4>
+                                    {parseHistory(reviewStudentModal.pendidikan_history).length === 0 ? <p style={revEmpty}>Tidak ada riwayat pendidikan yang dicantumkan.</p> : (
+                                        <ul style={{ margin: 0, paddingLeft: '20px', color: '#334155' }}>
+                                            {parseHistory(reviewStudentModal.pendidikan_history).map((edu, i) => (
+                                                <li key={i} style={{ marginBottom: '8px' }}>
+                                                    <b>{edu.jenjang} - {edu.nama_sekolah}</b> ({edu.jurusan || '-'})<br/>
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Tahun: {edu.thn_awal} s/d {edu.thn_akhir}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+
+                                {/* 3. Riwayat Kerja */}
+                                <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+                                    <h4 style={{ margin: '0 0 15px 0', color: brandNavy, fontWeight: 800, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>PENGALAMAN KERJA</h4>
+                                    {parseHistory(reviewStudentModal.kerja_history).length === 0 ? <p style={revEmpty}>Tidak ada pengalaman kerja yang dicantumkan.</p> : (
+                                        <ul style={{ margin: 0, paddingLeft: '20px', color: '#334155' }}>
+                                            {parseHistory(reviewStudentModal.kerja_history).map((job, i) => (
+                                                <li key={i} style={{ marginBottom: '8px' }}>
+                                                    <b>{job.nama_perusahaan}</b> - Posisi: {job.jenis_pekerjaan || '-'}<br/>
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Tahun: {job.thn_awal} s/d {job.thn_akhir}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+
+                                {/* 4. Data Keluarga */}
+                                <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                                    <h4 style={{ margin: '0 0 15px 0', color: brandNavy, fontWeight: 800, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>KONTAK KELUARGA</h4>
+                                    {parseHistory(reviewStudentModal.keluarga_history).length === 0 ? <p style={revEmpty}>Tidak ada data keluarga yang dicantumkan.</p> : (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead style={{ background: '#f1f5f9' }}>
+                                                <tr>
+                                                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Hubungan</th>
+                                                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Nama</th>
+                                                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Umur / Pekerjaan</th>
+                                                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Lokasi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {parseHistory(reviewStudentModal.keluarga_history).map((fam, i) => (
+                                                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                        <td style={{ padding: '8px' }}>{fam.hubungan}</td>
+                                                        <td style={{ padding: '8px', fontWeight: 800 }}>{fam.nama}</td>
+                                                        <td style={{ padding: '8px' }}>{fam.umur || '-'} Thn / {fam.pendapatan || '-'}</td>
+                                                        <td style={{ padding: '8px' }}>{fam.lokasi}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                                
+                                <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center' }}>
+                                    <button onClick={() => setReviewStudentModal(null)} style={{ padding: '12px 30px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>Tutup Review</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ── MODAL EVALUASI HARIAN (EDUKASI) ── */}
                 {isEduEvalOpen && eduEvalStudent && (
@@ -954,8 +1256,31 @@ export default function DashboardReguler() {
 }
 
 // ── STYLE OBJECTS ──
+const sidebarLabel = { fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px', textTransform: 'uppercase' };
 const activeMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: '#eff6ff', color: brandNavy, border: 'none', borderRadius: '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 800, fontSize: '0.95rem' };
 const inactiveMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: 'transparent', color: '#64748b', border: 'none', borderRadius: '10px', cursor: 'pointer', width: '100%', textAlign: 'left', fontWeight: 700, fontSize: '0.95rem', transition: '0.2s' };
+const selectFilter = { padding: '10px 15px', borderRadius: '10px', border: '1px solid #cbd5e1', fontWeight: 700, color: '#475569', cursor: 'pointer', outline: 'none' };
+const inputSearch = { padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '220px' };
+const tableContainer = { background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' };
+const tableS = { width: '100%', borderCollapse: 'collapse', textAlign: 'left' };
+const theadS = { background: '#f8fafc', borderBottom: '2px solid #e2e8f0' };
+const thStyle = { padding: '15px 20px', fontSize: '0.85rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const tdStyle = { padding: '15px 20px', fontSize: '0.95rem', color: '#334155' };
+const trS = { borderBottom: '1px solid #f1f5f9' };
+const badgeMitra = { padding: '4px 10px', background: '#eff6ff', color: '#3b82f6', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', width: 'fit-content', marginTop: '5px' };
+const badgeReguler = { padding: '4px 10px', background: '#f0fdf4', color: '#16a34a', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', width: 'fit-content', marginTop: '5px' };
+const btnMini = { padding: '4px 8px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', fontWeight: 700 };
+
+const actionBtn = (color) => ({ background: 'white', border: `1px solid ${color}40`, color: color, cursor: 'pointer', padding: '8px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: '0.2s', fontSize: '0.8rem', fontWeight: 700 });
+const btnAction = { padding: '8px 12px', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' };
+const btnPrimary = { padding: '10px 20px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' };
+const btnMasuk = { ...btnAction, background: brandNavy, color: 'white' };
+const btnBypass = { ...btnAction, background: '#f59e0b', color: 'white' };
+const btnUpgrade = { ...btnAction, background: '#8b5cf6', color: 'white' };
+const btnLulus = { ...btnAction, background: '#10b981', color: 'white' };
+
+const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(4px)' };
+const modalContent = { background: 'white', padding: '35px', borderRadius: '15px', width: '450px', maxWidth: '100%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', maxHeight: '90vh', overflowY: 'auto' };
 const sectionTitle = { fontSize: '1.2rem', color: '#1e293b', fontWeight: 800, margin: '0 0 20px 0', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' };
 const labelForm = { display: 'block', fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' };
 const inputForm = { width: '100%', padding: '12px 15px', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', fontSize: '0.95rem', color: '#1e293b', background: '#f8fafc' };
@@ -963,11 +1288,9 @@ const dynamicRowStyle = { display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr
 const btnAddArray = { background: '#dbeafe', color: brandNavy, border: `1px solid ${brandNavy}`, padding: '8px 16px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer', transition: '0.2s' };
 const btnRemoveArray = { background: '#fee2e2', color: '#ef4444', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const emptyArrayText = { textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600, padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '2px dashed #cbd5e1' };
-const thStyle = { padding: '15px 20px', fontSize: '0.85rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const tdStyle = { padding: '15px 20px', fontSize: '0.95rem', color: '#334155' };
-const actionBtn = (color) => ({ background: 'white', border: `1px solid ${color}40`, color: color, cursor: 'pointer', padding: '8px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: '0.2s', fontSize: '0.8rem', fontWeight: 700 });
-const btnAction = { padding: '8px 12px', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' };
-const btnPrimary = { padding: '10px 20px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' };
-const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(4px)' };
-const modalContent = { background: 'white', padding: '35px', borderRadius: '15px', width: '450px', maxWidth: '100%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', maxHeight: '90vh', overflowY: 'auto' };
 const badgeS = { fontSize: '0.7rem', padding: '4px 10px', borderRadius: '20px', background: '#e0e7ff', color: '#3730a3', fontWeight: 800, display: 'inline-block' };
+
+// ── STYLE TAMBAHAN UNTUK REVIEW PROFIL ──
+const revLabel = { display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' };
+const revVal = { display: 'block', fontSize: '1rem', color: '#1e293b', fontWeight: 700, marginTop: '2px' };
+const revEmpty = { fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic', margin: 0 };

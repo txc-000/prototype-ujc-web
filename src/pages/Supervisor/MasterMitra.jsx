@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Plus, MoreVertical, Edit, Trash2, X, GraduationCap, MapPin, Phone, Mail, Key } from 'lucide-react';
+import { Search, Plus, MoreVertical, Edit, Trash2, X, GraduationCap, MapPin, Phone, Mail, Key, Users, Loader2 } from 'lucide-react';
 
 const brandNavy = '#101869';
 
@@ -14,6 +14,11 @@ export default function MasterMitra() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
+
+    // ── STATE MODAL SISWA MITRA ──
+    const [selectedMitra, setSelectedMitra] = useState(null);
+    const [mitraStudents, setMitraStudents] = useState([]);
+    const [isLoadingStudents, setIsLoadingStudents] = useState(false);
 
     const initialForm = {
         nama_institusi: '', jenis_institusi: 'SMK', 
@@ -62,42 +67,31 @@ export default function MasterMitra() {
         setIsLoading(true);
         try {
             let targetId = editingId;
-
-            // FUNGSI TRIM UNTUK MEMBERSIHKAN SPASI TERSEMBUNYI
             const cleanEmail = formData.email ? formData.email.trim() : '';
 
-            // 1. JIKA DATA BARU: Buat Akun Auth Terlebih Dahulu
             if (!editingId) {
                 if (!formData.password || formData.password.length < 6) {
                     throw new Error("Password minimal 6 karakter untuk akun Mitra.");
                 }
 
-                // Daftarkan ke Supabase Auth
                 const { data: authData, error: authError } = await supabase.auth.signUp({
                     email: cleanEmail,
                     password: formData.password,
-                    // Opsional: Tambahkan meta data agar email langsung terverifikasi jika setting confirm email dimatikan
                 });
 
                 if (authError) throw authError;
                 if (!authData.user) throw new Error("Gagal membuat kredensial akses. Mungkin email sudah terdaftar.");
                 
-                targetId = authData.user.id; // Gunakan UUID dari Auth untuk ID tabel profil
-
-                // PENTING: Jika Tuan memiliki tabel 'employees' untuk mengecek role saat login,
-                // Pastikan role untuk Mitra juga dimasukkan ke sana. 
-                // Asumsi: 'MITRA' adalah id_role yang valid. Tuan bisa menyesuaikan kode ini.
-                // await supabase.from('employees').insert([{ id: targetId, email_pribadi: cleanEmail, role_id: 'ID_UNTUK_MITRA', is_active: true }]);
+                targetId = authData.user.id; 
             }
 
-            // 2. Simpan Profil ke master_mitra_lokal
             const profileData = {
-                id: targetId, // UUID dari Auth
+                id: targetId, 
                 nama_institusi: formData.nama_institusi,
                 jenis_institusi: formData.jenis_institusi,
                 penanggung_jawab: formData.penanggung_jawab,
                 no_telepon: formData.no_telepon,
-                email: cleanEmail, // Gunakan email bersih
+                email: cleanEmail, 
                 alamat: formData.alamat,
                 status: formData.status
             };
@@ -130,6 +124,27 @@ export default function MasterMitra() {
             setActiveDropdown(null);
             fetchData();
         } catch (error) { alert('Error: ' + error.message); }
+    };
+
+    // ── FUNGSI MELIHAT DAFTAR SISWA MITRA ──
+    const handleViewStudents = async (mitra) => {
+        setSelectedMitra(mitra);
+        setIsLoadingStudents(true);
+        setActiveDropdown(null); // Tutup dropdown
+        try {
+            const { data, error } = await supabase
+                .from('students')
+                .select('id, nik, nama_lengkap, jenis_kelamin, program, tahap_sekarang, status_akhir, medical_checkup_status')
+                .eq('lpk_asal', mitra.nama_institusi) // Filter berdasarkan nama_institusi
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setMitraStudents(data || []);
+        } catch (error) {
+            alert('Gagal mengambil data siswa: ' + error.message);
+        } finally {
+            setIsLoadingStudents(false);
+        }
     };
 
     const filteredData = mitraList.filter(m =>
@@ -183,6 +198,8 @@ export default function MasterMitra() {
                                     </button>
                                     {activeDropdown === mitra.id && (
                                         <div ref={dropdownRef} style={dropdownContainer}>
+                                            {/* TOMBOL LIHAT SISWA DITAMBAHKAN DI SINI */}
+                                            <button onClick={() => handleViewStudents(mitra)} style={{...dropdownItemS, color: brandNavy}}><Users size={14} /> Lihat Delegasi</button>
                                             <button onClick={() => openModal(mitra)} style={dropdownItemS}><Edit size={14} /> Ubah Data</button>
                                             <button onClick={() => handleDelete(mitra.id, mitra.nama_institusi)} style={{ ...dropdownItemS, color: '#ef4444' }}><Trash2 size={14} /> Hapus</button>
                                         </div>
@@ -205,6 +222,73 @@ export default function MasterMitra() {
                 </div>
             )}
 
+            {/* ── MODAL DAFTAR SISWA PER MITRA ── */}
+            {selectedMitra && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(4px)' }}>
+                    <div style={{ background: 'white', borderRadius: '16px', width: '900px', maxWidth: '95vw', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+                        <div style={{ background: brandNavy, padding: '25px 30px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900 }}>Daftar Siswa Delegasi</h3>
+                                <p style={{ margin: '5px 0 0 0', color: '#cbd5e1', fontSize: '0.9rem' }}>🏢 LPK Asal: {selectedMitra.nama_institusi}</p>
+                            </div>
+                            <button onClick={() => setSelectedMitra(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={24}/></button>
+                        </div>
+
+                        <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto', background: '#f8fafc' }}>
+                            {isLoadingStudents ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader2 className="animate-spin" size={40} color={brandNavy}/></div>
+                            ) : mitraStudents.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontWeight: 700, border: '2px dashed #cbd5e1', borderRadius: '12px' }}>
+                                    Mitra ini belum mendaftarkan siswa sama sekali.
+                                </div>
+                            ) : (
+                                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                        <thead style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                                            <tr>
+                                                <th style={thStyle}>Nama & NIK</th>
+                                                <th style={thStyle}>Program</th>
+                                                <th style={thStyle}>Posisi / Tahap Saat Ini</th>
+                                                <th style={thStyle}>Status MCU & Akhir</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {mitraStudents.map((s, idx) => (
+                                                <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                    <td style={tdStyle}>
+                                                        <div style={{ fontWeight: 800, color: '#1e293b' }}>{idx + 1}. {s.nama_lengkap}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'monospace' }}>{s.nik}</div>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669' }}>{s.program}</span>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        <div style={{ fontSize: '0.75rem', padding: '4px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8', display: 'inline-block', fontWeight: 800 }}>
+                                                            {s.tahap_sekarang}
+                                                        </div>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, background: s.medical_checkup_status === 'FIT' ? '#dcfce7' : (s.medical_checkup_status === 'UNFIT' ? '#fee2e2' : '#fef3c7'), color: s.medical_checkup_status === 'FIT' ? '#166534' : (s.medical_checkup_status === 'UNFIT' ? '#991b1b' : '#92400e') }}>
+                                                                MCU: {s.medical_checkup_status || 'PENDING'}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, background: s.status_akhir === 'GAGAL SELEKSI' ? '#fee2e2' : '#f1f5f9', color: s.status_akhir === 'GAGAL SELEKSI' ? '#991b1b' : '#475569' }}>
+                                                                Status: {s.status_akhir || '-'}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── MODAL FORM TAMBAH/EDIT MITRA ── */}
             {isModalOpen && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
                     <form onSubmit={handleSubmit} style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '550px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
@@ -215,7 +299,6 @@ export default function MasterMitra() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px', maxHeight: '65vh', overflowY: 'auto', paddingRight: '10px' }}>
                             
-                            {/* BAGIAN 1: KREDENSIAL LOGIN (HANYA MUNCUL SAAT TAMBAH BARU) */}
                             {!editingId && (
                                 <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px dashed #cbd5e1', marginBottom: '10px' }}>
                                     <div style={{ fontSize: '0.8rem', fontWeight: 800, color: brandNavy, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Key size={16}/> KREDENSIAL LOGIN PORTAL</div>
@@ -227,12 +310,10 @@ export default function MasterMitra() {
                                 </div>
                             )}
 
-                            {/* JIKA EDIT, TAMPILKAN EMAIL SAJA TANPA PASSWORD */}
                             {editingId && (
                                 <div><label style={labelForm}>Email Kontak / Login</label><input type="email" name="email" value={formData.email} onChange={handleInputChange} required style={{...inputForm, background: '#f1f5f9'}} readOnly title="Email login tidak bisa diubah dari sini." /></div>
                             )}
 
-                            {/* BAGIAN 2: DATA PROFIL */}
                             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
                                 <div><label style={labelForm}>Nama Institusi / Sekolah *</label><input type="text" name="nama_institusi" value={formData.nama_institusi} onChange={handleInputChange} required style={inputForm} placeholder="Contoh: SMKN 1 Jepara" /></div>
                                 <div><label style={labelForm}>Jenis</label>
@@ -278,3 +359,5 @@ const inputForm = { width: '100%', padding: '10px 15px', borderRadius: '8px', bo
 const infoRowS = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#64748b' };
 const dropdownContainer = { position: 'absolute', right: '0', top: '25px', background: 'white', borderRadius: '8px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0', width: '140px', zIndex: 50, padding: '5px', textAlign: 'left' };
 const dropdownItemS = { width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', borderRadius: '4px', transition: 'background 0.2s' };
+const thStyle = { padding: '18px 20px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const tdStyle = { padding: '15px 20px', fontSize: '0.95rem', color: '#334155', verticalAlign: 'middle' };
