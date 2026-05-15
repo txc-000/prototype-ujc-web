@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { 
-    ArrowLeft, Printer, Edit, Trash2, UserCheck, 
-    X, Building2, Search, UserPlus, CheckCircle2, Loader2, Briefcase, Save
-} from 'lucide-react';
+import { supervisorService } from '../../services/supervisorService'; 
+import { ArrowLeft, Printer, Edit, Trash2, UserCheck, X, Building2, Search, UserPlus, CheckCircle2, Loader2, Briefcase, Save } from 'lucide-react';
+
+// IMPORT STYLES SENTRAL
+import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
 
 const cleanStr = (str) => str ? String(str).trim() : '';
-const brandNavy = '#101869';
 
 const formatDateTime = (dateString) => {
     if (!dateString) return '-';
@@ -51,40 +50,23 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
     const fetchMasterDropdowns = async () => {
         try {
-            const [bidangRes, kumiaiRes] = await Promise.all([
-                supabase.from('master_bidang').select('*'),
-                supabase.from('master_kumiai').select('*')
-            ]);
-            if (bidangRes.data) setMasterBidang(bidangRes.data);
-            if (kumiaiRes.data) setMasterKumiai(kumiaiRes.data);
+            const dropdowns = await supervisorService.getMasterDropdowns();
+            setMasterBidang(dropdowns.bidang);
+            setMasterKumiai(dropdowns.kumiai);
         } catch (err) { console.error(err); }
     };
 
     const fetchParticipants = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('students')
-                .select('*')
-                .eq('perusahaan_tujuan', localJobOrder.perusahaan)
-                .order('nama_lengkap', { ascending: true });
-            if (error) throw error;
-            setParticipants(data || []);
+            const data = await supervisorService.getJobOrderParticipants(localJobOrder.perusahaan);
+            setParticipants(data);
         } catch (error) { console.error("Gagal memuat peserta:", error); } finally { setLoading(false); }
     };
 
     const fetchAvailableStudents = async () => {
         try {
-            const { data, error } = await supabase.from('students').select('*').order('nama_lengkap', { ascending: true });
-            if (error) throw error;
-
-            const validStudents = (data || []).filter(s => {
-                const tahap = (s.tahap_sekarang || '').toUpperCase();
-                const isNganggur = ['AVAILABLE', 'SELEKSI AWAL', 'REGISTRASI', 'PRA_MENSETSU', 'INTERVIEW'].includes(tahap);
-                const isNoCompany = !s.perusahaan_tujuan || s.perusahaan_tujuan.trim() === '';
-                return isNganggur && isNoCompany;
-            });
-            
+            const validStudents = await supervisorService.getAvailableStudentsForJob();
             setAvailableStudents(validStudents);
         } catch (error) { console.error("Gagal memuat kandidat:", error); }
     };
@@ -110,20 +92,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
         setIsSubmitting(true);
         try {
-            const { error: studentErr } = await supabase
-                .from('students')
-                .update({ 
-                    perusahaan_tujuan: localJobOrder.perusahaan, // INJEKSI MUTLAK
-                    tahap_sekarang: 'PRA_MENSETSU', 
-                    status_akhir: 'Proses', 
-                    catatan: '' 
-                })
-                .in('id', selectedStudentIds);
-            if (studentErr) throw studentErr;
-
-            const { error: joErr } = await supabase.from('job_orders').update({ terisi: totalNanti }).eq('id', localJobOrder.id);
-            if (joErr) throw joErr;
-
+            await supervisorService.addCandidatesToJob(selectedStudentIds, localJobOrder.id, localJobOrder.perusahaan, totalNanti);
+            
             alert(`${selectedStudentIds.length} Kandidat berhasil ditambahkan ke tahap PRAMENSETSU!`);
             setIsAddModalOpen(false);
             setLocalJobOrder(prev => ({...prev, terisi: totalNanti}));
@@ -134,11 +104,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
     const handleDeleteParticipant = async (participantId, namaLengkap) => {
         if (!window.confirm(`Keluarkan ${namaLengkap} dari Job Order ini?`)) return;
         try {
-            const { error } = await supabase.from('students').update({ perusahaan_tujuan: null, tahap_sekarang: 'AVAILABLE', status_akhir: 'BELUM DAPAT JOB', catatan: '' }).eq('id', participantId);
-            if (error) throw error;
-            
             const totalSekarang = Math.max(0, participants.length - 1);
-            await supabase.from('job_orders').update({ terisi: totalSekarang }).eq('id', localJobOrder.id);
+            await supervisorService.removeCandidateFromJob(participantId, localJobOrder.id, totalSekarang);
 
             setLocalJobOrder(prev => ({...prev, terisi: totalSekarang}));
             fetchParticipants();
@@ -161,8 +128,7 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
     const handleQuickStatusUpdate = async (newStatus) => {
         try {
-            const { error } = await supabase.from('job_orders').update({ status: newStatus, updated_at: new Date() }).eq('id', localJobOrder.id);
-            if (error) throw error;
+            await supervisorService.updateJobOrderStatusQuick(localJobOrder.id, newStatus);
             setLocalJobOrder({ ...localJobOrder, status: newStatus });
         } catch (err) { alert(`Gagal update status: ${err.message}`); }
     };
@@ -186,8 +152,7 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                 updated_at: new Date()
             };
 
-            const { error } = await supabase.from('job_orders').update(payload).eq('id', localJobOrder.id);
-            if (error) throw error;
+            await supervisorService.updateJobOrderDetailFull(localJobOrder.id, payload);
             
             alert('Data Job Order berhasil diperbarui!');
             setLocalJobOrder({ ...localJobOrder, ...payload }); 
@@ -212,27 +177,27 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                 updated_at: new Date()
             };
 
-            // LOGIKA PENGUNCIAN DAN PELEPASAN PERUSAHAAN
+            let isFailed = false;
+            let totalSekarang = participants.length;
+
             if (selectionData.status === 'LULUS') {
                 tahapBaru = 'MATCHED';
                 payloadUpdate.tahap_sekarang = tahapBaru;
-                payloadUpdate.perusahaan_tujuan = localJobOrder.perusahaan; // Kunci Absolut
+                payloadUpdate.perusahaan_tujuan = localJobOrder.perusahaan;
             } else if (selectionData.status === 'TIDAK LULUS' || selectionData.status === 'CANCEL') {
                 tahapBaru = 'AVAILABLE';
                 payloadUpdate.tahap_sekarang = tahapBaru;
-                payloadUpdate.perusahaan_tujuan = null; // Lepaskan agar bisa ikut Job lain
-
-                // Kurangi slot terisi di Job Order jika gagal
-                const totalSekarang = Math.max(0, participants.length - 1);
-                await supabase.from('job_orders').update({ terisi: totalSekarang }).eq('id', localJobOrder.id);
-                setLocalJobOrder(prev => ({...prev, terisi: totalSekarang}));
+                payloadUpdate.perusahaan_tujuan = null; 
+                isFailed = true;
+                totalSekarang = Math.max(0, participants.length - 1);
             } else {
                 payloadUpdate.tahap_sekarang = tahapBaru;
             }
 
-            const { error } = await supabase.from('students').update(payloadUpdate).eq('id', selectedParticipant.id);
-            if (error) throw error;
+            await supervisorService.saveCandidateSelection(selectedParticipant.id, localJobOrder.id, payloadUpdate, isFailed, totalSekarang);
             
+            if (isFailed) setLocalJobOrder(prev => ({...prev, terisi: totalSekarang}));
+
             alert('Hasil seleksi berhasil disimpan!');
             setIsModalOpen(false);
             fetchParticipants(); 
@@ -246,6 +211,12 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
         if (s.includes('CADANGAN')) return { bg: '#fef3c7', text: '#92400e', icon: '🤷‍♂️' }; 
         return { bg: '#f1f5f9', text: '#64748b', icon: '⏳' }; 
     };
+
+    // LOCAL STYLES UNTUK DETAIL JOB (Dipindah dari bawah ke konstanta agar bersih)
+    const tdLabel = { width: '240px', padding: '14px 0', fontWeight: 800, color: '#64748b', fontSize: '1rem' };
+    const tdValue = { padding: '14px 0', color: '#0f172a', fontWeight: 900, fontSize: '1.05rem' };
+    const btnStatus = { background: 'white', border: '1px solid #cbd5e1', padding: '8px 15px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 900, color: '#3b82f6', cursor: 'pointer', transition: '0.2s' };
+    const btnSidebar = { width: '100%', padding: '14px 20px', borderRadius: '10px', border: 'none', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '1rem', transition: '0.2s' };
 
     if (!localJobOrder) { return <div style={{ padding: '50px', textAlign: 'center', background: '#f1f5f9' }}><h2>Memuat data...</h2></div>; }
 
@@ -273,14 +244,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                         </div>
                     </div>
                     <div style={{ padding: '25px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <button onClick={openAddModal} style={{...s_btnSidebar, background: '#10b981', color: 'white'}}><UserPlus size={18}/> Tambah Kandidat</button>
-                        <button 
-                            onClick={() => {
-                                setEditJobForm({ ...localJobOrder, tanggal_recruiting: toInputFormat(localJobOrder.tanggal_recruiting), tanggal_pelatihan: toInputFormat(localJobOrder.tanggal_pelatihan), tanggal_wawancara: toInputFormat(localJobOrder.tanggal_wawancara), tanggal_selesai: toInputFormat(localJobOrder.tanggal_selesai) });
-                                setIsEditJobOpen(true);
-                            }} 
-                            style={{...s_btnSidebar, background: brandNavy, color: 'white'}}
-                        >
+                        <button onClick={openAddModal} style={{...btnSidebar, background: '#10b981', color: 'white'}}><UserPlus size={18}/> Tambah Kandidat</button>
+                        <button onClick={() => { setEditJobForm({ ...localJobOrder, tanggal_recruiting: toInputFormat(localJobOrder.tanggal_recruiting), tanggal_pelatihan: toInputFormat(localJobOrder.tanggal_pelatihan), tanggal_wawancara: toInputFormat(localJobOrder.tanggal_wawancara), tanggal_selesai: toInputFormat(localJobOrder.tanggal_selesai) }); setIsEditJobOpen(true); }} style={{...btnSidebar, background: brandNavy, color: 'white'}}>
                             <Edit size={18}/> Ubah Detail Job
                         </button>
                     </div>
@@ -290,32 +255,32 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                     <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#334155', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', marginBottom: '25px', marginTop: 0 }}>I. DETAIL JOB ORDER</h3>
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '50px' }}>
                         <tbody>
-                            <tr><td style={s_tdLabel}>ID Job Order</td><td style={{width:'15px', color:'#94a3b8'}}>:</td><td style={s_tdValue}>{localJobOrder?.job_id || '-'}</td></tr>
-                            <tr><td style={s_tdLabel}>Nama Perusahaan</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{localJobOrder?.perusahaan || '-'}</td></tr>
-                            <tr><td style={s_tdLabel}>Jenis Job</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{localJobOrder?.bidang || '-'}</td></tr>
-                            <tr><td style={s_tdLabel}>Kumiai</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{localJobOrder?.kumiai || '-'}</td></tr>
-                            <tr><td style={s_tdLabel}>Jumlah Peserta Dibutuhkan</td><td style={{color:'#94a3b8'}}>:</td><td style={{...s_tdValue, color: brandNavy, fontSize: '1.2rem'}}>{localJobOrder?.kuota || 0} Peserta</td></tr>
+                            <tr><td style={tdLabel}>ID Job Order</td><td style={{width:'15px', color:'#94a3b8'}}>:</td><td style={tdValue}>{localJobOrder?.job_id || '-'}</td></tr>
+                            <tr><td style={tdLabel}>Nama Perusahaan</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{localJobOrder?.perusahaan || '-'}</td></tr>
+                            <tr><td style={tdLabel}>Jenis Job</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{localJobOrder?.bidang || '-'}</td></tr>
+                            <tr><td style={tdLabel}>Kumiai</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{localJobOrder?.kumiai || '-'}</td></tr>
+                            <tr><td style={tdLabel}>Jumlah Peserta Dibutuhkan</td><td style={{color:'#94a3b8'}}>:</td><td style={{...tdValue, color: brandNavy, fontSize: '1.2rem'}}>{localJobOrder?.kuota || 0} Peserta</td></tr>
                             
-                            <tr><td style={s_tdLabel}>Tanggal Recruiting</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{formatDateTime(localJobOrder?.tanggal_recruiting)}</td></tr>
-                            <tr><td style={s_tdLabel}>Tanggal Pelatihan</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{formatDateTime(localJobOrder?.tanggal_pelatihan)}</td></tr>
-                            <tr><td style={s_tdLabel}>Tanggal Wawancara</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{formatDateTime(localJobOrder?.tanggal_wawancara)}</td></tr>
-                            <tr><td style={s_tdLabel}>Tanggal Selesai</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{formatDateTime(localJobOrder?.tanggal_selesai)}</td></tr>
+                            <tr><td style={tdLabel}>Tanggal Recruiting</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{formatDateTime(localJobOrder?.tanggal_recruiting)}</td></tr>
+                            <tr><td style={tdLabel}>Tanggal Pelatihan</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{formatDateTime(localJobOrder?.tanggal_pelatihan)}</td></tr>
+                            <tr><td style={tdLabel}>Tanggal Wawancara</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{formatDateTime(localJobOrder?.tanggal_wawancara)}</td></tr>
+                            <tr><td style={tdLabel}>Tanggal Selesai</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{formatDateTime(localJobOrder?.tanggal_selesai)}</td></tr>
 
-                            <tr><td style={s_tdLabel}>Status Workflow</td><td style={{color:'#94a3b8'}}>:</td>
-                                <td style={s_tdValue}>
+                            <tr><td style={tdLabel}>Status Workflow</td><td style={{color:'#94a3b8'}}>:</td>
+                                <td style={tdValue}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                         <span className="status-blink" style={{ background: '#3b82f6', color: 'white', padding: '6px 15px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', boxShadow: '0 0 10px rgba(59,130,246,0.5)' }}>{localJobOrder?.status || 'AKTIF'}</span>
                                         <span style={{ color: '#cbd5e1', margin: '0 5px' }}>|</span>
-                                        <button onClick={() => handleQuickStatusUpdate('RECRUITING')} style={s_btnStatus}>🕵🏽 RECRUITING</button>
-                                        <button onClick={() => handleQuickStatusUpdate('CETAK')} style={s_btnStatus}>🖨️ CETAK</button>
-                                        <button onClick={() => handleQuickStatusUpdate('PELATIHAN')} style={s_btnStatus}>💪🏽 PELATIHAN</button>
-                                        <button onClick={() => handleQuickStatusUpdate('WAWANCARA')} style={s_btnStatus}>📢 WAWANCARA</button>
-                                        <button onClick={() => handleQuickStatusUpdate('SELESAI')} style={{...s_btnStatus, background: '#10b981', color: 'white', borderColor: '#10b981'}}>🏆 SELESAI</button>
-                                        <button onClick={() => handleQuickStatusUpdate('CANCEL')} style={{...s_btnStatus, color: '#ef4444'}}>🚫 CANCEL</button>
+                                        <button onClick={() => handleQuickStatusUpdate('RECRUITING')} style={btnStatus}>🕵🏽 RECRUITING</button>
+                                        <button onClick={() => handleQuickStatusUpdate('CETAK')} style={btnStatus}>🖨️ CETAK</button>
+                                        <button onClick={() => handleQuickStatusUpdate('PELATIHAN')} style={btnStatus}>💪🏽 PELATIHAN</button>
+                                        <button onClick={() => handleQuickStatusUpdate('WAWANCARA')} style={btnStatus}>📢 WAWANCARA</button>
+                                        <button onClick={() => handleQuickStatusUpdate('SELESAI')} style={{...btnStatus, background: '#10b981', color: 'white', borderColor: '#10b981'}}>🏆 SELESAI</button>
+                                        <button onClick={() => handleQuickStatusUpdate('CANCEL')} style={{...btnStatus, color: '#ef4444'}}>🚫 CANCEL</button>
                                     </div>
                                 </td>
                             </tr>
-                            <tr><td style={s_tdLabel}>Catatan</td><td style={{color:'#94a3b8'}}>:</td><td style={s_tdValue}>{localJobOrder?.catatan || '-'}</td></tr>
+                            <tr><td style={tdLabel}>Catatan</td><td style={{color:'#94a3b8'}}>:</td><td style={tdValue}>{localJobOrder?.catatan || '-'}</td></tr>
                         </tbody>
                     </table>
 
@@ -332,16 +297,16 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                         <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8', fontWeight: 600 }}><Loader2 className="animate-spin" size={40} style={{margin:'0 auto'}}/></div>
                     ) : (
                         <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                            <table style={styles.tableS}>
+                                <thead style={styles.theadS}>
                                     <tr>
-                                        <th style={s_thStyle}>No</th>
-                                        <th style={s_thStyle}>Nama Peserta</th>
-                                        <th style={s_thStyle}>JK</th>
-                                        <th style={s_thStyle}>No. HP</th>
-                                        <th style={s_thStyle}>Status Seleksi</th>
-                                        <th style={s_thStyle}>Catatan</th>
-                                        <th style={{...s_thStyle, textAlign:'center'}}>Aksi</th>
+                                        <th style={styles.thStyle}>No</th>
+                                        <th style={styles.thStyle}>Nama Peserta</th>
+                                        <th style={styles.thStyle}>JK</th>
+                                        <th style={styles.thStyle}>No. HP</th>
+                                        <th style={styles.thStyle}>Status Seleksi</th>
+                                        <th style={styles.thStyle}>Catatan</th>
+                                        <th style={{...styles.thStyle, textAlign:'center'}}>Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -350,14 +315,13 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                     ) : participants.map((p, idx) => {
                                         const badge = getBadgeStyle(p?.status_akhir);
                                         const namaLengkap = p?.nama_lengkap || 'Data Tidak Ditemukan';
-                                        // Peringatan: Pastikan foto siswa di Supabase Storage valid
-                                        const foto = p?.id ? supabase.storage.from('registration_photos').getPublicUrl(`${p.id}.jpg`).data.publicUrl : '';
+                                        const foto = supervisorService.getStudentPhotoUrl(p?.id);
                                         const jk = p?.jenis_kelamin === 'Laki-Laki' || p?.jenis_kelamin === 'L' ? 'L' : p?.jenis_kelamin === 'Perempuan' || p?.jenis_kelamin === 'P' ? 'P' : '-';
                                         
                                         return (
-                                            <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={s_tdStyle}>{idx + 1}</td>
-                                                <td style={s_tdStyle}>
+                                            <tr key={p.id} style={styles.trS}>
+                                                <td style={styles.tdStyle}>{idx + 1}</td>
+                                                <td style={styles.tdStyle}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                                         <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
                                                             <img src={foto} alt="foto" onError={(e) => e.target.style.display='none'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -365,14 +329,14 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                                         <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem' }}>{namaLengkap}</div>
                                                     </div>
                                                 </td>
-                                                <td style={s_tdStyle}>{jk}</td>
-                                                <td style={s_tdStyle}>{p?.telepon || '-'}</td>
-                                                <td style={s_tdStyle}><span style={{ background: badge.bg, color: badge.text, padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 900, whiteSpace: 'nowrap' }}>{badge.icon} {p?.status_akhir || 'PROSES'}</span></td>
-                                                <td style={s_tdStyle}><div style={{ color: '#64748b', fontSize: '0.9rem' }}>{p?.catatan || '-'}</div></td>
-                                                <td style={{...s_tdStyle, textAlign: 'center'}}>
+                                                <td style={styles.tdStyle}>{jk}</td>
+                                                <td style={styles.tdStyle}>{p?.telepon || '-'}</td>
+                                                <td style={styles.tdStyle}><span style={{ background: badge.bg, color: badge.text, padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 900, whiteSpace: 'nowrap' }}>{badge.icon} {p?.status_akhir || 'PROSES'}</span></td>
+                                                <td style={styles.tdStyle}><div style={{ color: '#64748b', fontSize: '0.9rem' }}>{p?.catatan || '-'}</div></td>
+                                                <td style={{...styles.tdStyle, textAlign: 'center'}}>
                                                     <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                                                         <button onClick={() => openModalSeleksi(p)} style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 800, boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)' }}><UserCheck size={16}/> Seleksi</button>
-                                                        <button onClick={() => handleDeleteParticipant(p.id, namaLengkap)} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Hapus dari Job Order"><Trash2 size={18}/></button>
+                                                        <button onClick={() => handleDeleteParticipant(p.id, namaLengkap)} style={styles.btnDel} title="Hapus dari Job Order"><Trash2 size={18}/></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -387,20 +351,20 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
             {/* ── MODAL PILIH KANDIDAT ── */}
             {isAddModalOpen && (
-                <div style={s_modalOverlay}>
-                    <div style={{...s_modalContent, width: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-                        <div style={{ padding: '25px 30px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+                <div style={styles.modalOverlay}>
+                    <div style={{...styles.modalContent, width: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                        <div style={{ padding: '25px 30px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
                             <div>
                                 <h2 style={{ margin: 0, fontWeight: 900, color: '#1e293b', fontSize: '1.6rem' }}>Pilih Kandidat Tersedia</h2>
                                 <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#64748b' }}>Centang siswa nganggur (Available) yang akan dimasukkan ke <b>{localJobOrder.perusahaan}</b>.</p>
                             </div>
-                            <button onClick={() => setIsAddModalOpen(false)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', padding: '10px', cursor: 'pointer' }}><X size={20} color="#64748b"/></button>
+                            <button onClick={() => setIsAddModalOpen(false)} style={styles.closeBtn}><X size={20} color="#64748b"/></button>
                         </div>
 
                         <div style={{ padding: '20px 30px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                             <div style={{ position: 'relative' }}>
                                 <Search size={20} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '14px' }} />
-                                <input type="text" placeholder="Ketik Minat Bidang, jurusan, atau nama..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ width: '100%', padding: '14px 15px 14px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem' }} />
+                                <input type="text" placeholder="Ketik Minat Bidang, jurusan, atau nama..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ ...styles.inp, paddingLeft: '45px' }} />
                             </div>
                         </div>
 
@@ -411,10 +375,10 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
                                         <tr>
-                                            <th style={{...s_thStyle, width: '50px'}}>Pilih</th>
-                                            <th style={s_thStyle}>Nama Kandidat</th>
-                                            <th style={s_thStyle}>Minat Bidang</th>
-                                            <th style={s_thStyle}>Latar Belakang / Pendidikan</th>
+                                            <th style={{...styles.thStyle, width: '50px'}}>Pilih</th>
+                                            <th style={styles.thStyle}>Nama Kandidat</th>
+                                            <th style={styles.thStyle}>Minat Bidang</th>
+                                            <th style={styles.thStyle}>Latar Belakang / Pendidikan</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -423,14 +387,14 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                             const jurusan = getJurusanTerakhir(c.pendidikan_history);
                                             return (
                                                 <tr key={c.id} onClick={() => toggleStudentSelection(c.id)} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isSelected ? '#eff6ff' : 'transparent', transition: '0.2s' }}>
-                                                    <td style={{...s_tdStyle, textAlign: 'center'}}>
+                                                    <td style={{...styles.tdStyle, textAlign: 'center'}}>
                                                         <div style={{ width: '26px', height: '26px', borderRadius: '6px', border: `2px solid ${isSelected ? brandNavy : '#cbd5e1'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? brandNavy : 'white' }}>
                                                             {isSelected && <CheckCircle2 size={18} color="white" />}
                                                         </div>
                                                     </td>
-                                                    <td style={s_tdStyle}><div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem' }}>{c.nama_lengkap}</div><div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>Tahap: <b>{c.tahap_sekarang || '-'}</b> | JK: {c.jenis_kelamin}</div></td>
-                                                    <td style={s_tdStyle}><div style={{ fontSize: '0.95rem', color: '#10b981', fontWeight: 900 }}>🎯 {c.minat_bidang || 'Belum Diset'}</div></td>
-                                                    <td style={s_tdStyle}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#475569', fontWeight: 800 }}><Briefcase size={16}/> {jurusan}</div><div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{c.asal_sekolah || '-'}</div></td>
+                                                    <td style={styles.tdStyle}><div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem' }}>{c.nama_lengkap}</div><div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>Tahap: <b>{c.tahap_sekarang || '-'}</b> | JK: {c.jenis_kelamin}</div></td>
+                                                    <td style={styles.tdStyle}><div style={{ fontSize: '0.95rem', color: '#10b981', fontWeight: 900 }}>🎯 {c.minat_bidang || 'Belum Diset'}</div></td>
+                                                    <td style={styles.tdStyle}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#475569', fontWeight: 800 }}><Briefcase size={16}/> {jurusan}</div><div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{c.asal_sekolah || '-'}</div></td>
                                                 </tr>
                                             )
                                         })}
@@ -442,8 +406,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                         <div style={{ padding: '20px 30px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderBottomLeftRadius: '20px', borderBottomRightRadius: '20px' }}>
                             <div style={{ fontWeight: 800, color: '#475569', fontSize: '1.1rem' }}>Terpilih: <span style={{ color: brandNavy, fontSize: '1.5rem', fontWeight: 900 }}>{selectedStudentIds.length}</span> Siswa</div>
                             <div style={{ display: 'flex', gap: '15px' }}>
-                                <button onClick={() => setIsAddModalOpen(false)} style={{ padding: '15px 25px', background: 'white', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>Batal</button>
-                                <button onClick={handleAddKandidat} disabled={isSubmitting} style={{ padding: '15px 30px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1rem' }}>
+                                <button onClick={() => setIsAddModalOpen(false)} style={styles.cancelBtn}>Batal</button>
+                                <button onClick={handleAddKandidat} disabled={isSubmitting} style={styles.btnPrimary}>
                                     {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : 'Masukkan ke Job Order'}
                                 </button>
                             </div>
@@ -454,23 +418,23 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
             {/* ── MODAL EDIT JOB ── */}
             {isEditJobOpen && (
-                <div style={s_modalOverlay}>
-                    <form onSubmit={handleUpdateJobOrder} style={{...s_modalContent, width: '800px', maxHeight: '90vh', overflowY: 'auto', padding: 0}}>
-                        <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'white', zIndex: 10 }}>
+                <div style={styles.modalOverlay}>
+                    <form onSubmit={handleUpdateJobOrder} style={{...styles.modalContent, width: '800px', padding: 0}}>
+                        <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'white', zIndex: 10, borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
                             <div>
                                 <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 900, color: '#1e293b' }}>Ubah Data Job Order</h2>
                                 <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#64748b' }}>Perbarui informasi detail untuk Job Kaisha.</p>
                             </div>
-                            <button type="button" onClick={() => setIsEditJobOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', padding: '10px', cursor: 'pointer' }}><X size={20} color="#64748b"/></button>
+                            <button type="button" onClick={() => setIsEditJobOpen(false)} style={styles.closeBtn}><X size={20} color="#64748b"/></button>
                         </div>
                         
-                        <div style={{ padding: '30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                            <div><label style={s_labelS}>ID Job Order</label><input style={s_inputS} required value={editJobForm.job_id || ''} onChange={(e) => setEditJobForm({...editJobForm, job_id: e.target.value})} /></div>
-                            <div><label style={s_labelS}>Nama Perusahaan</label><input style={s_inputS} required value={editJobForm.perusahaan || ''} onChange={(e) => setEditJobForm({...editJobForm, perusahaan: e.target.value})} /></div>
+                        <div style={{ padding: '30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
+                            <div><label style={styles.lb}>ID Job Order</label><input style={styles.inp} required value={editJobForm.job_id || ''} onChange={(e) => setEditJobForm({...editJobForm, job_id: e.target.value})} /></div>
+                            <div><label style={styles.lb}>Nama Perusahaan</label><input style={styles.inp} required value={editJobForm.perusahaan || ''} onChange={(e) => setEditJobForm({...editJobForm, perusahaan: e.target.value})} /></div>
                             
                             <div>
-                                <label style={s_labelS}>Bidang / Jenis Job</label>
-                                <select required style={s_inputS} value={editJobForm.bidang || ''} onChange={(e) => setEditJobForm({...editJobForm, bidang: e.target.value})}>
+                                <label style={styles.lb}>Bidang / Jenis Job</label>
+                                <select required style={styles.inp} value={editJobForm.bidang || ''} onChange={(e) => setEditJobForm({...editJobForm, bidang: e.target.value})}>
                                     <option value="">-- Pilih Bidang Pekerjaan --</option>
                                     {masterBidang.map((b, i) => {
                                         const val = b.nama_bidang || b.bidang || b.nama || Object.values(b)[1];
@@ -480,8 +444,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                             </div>
 
                             <div>
-                                <label style={s_labelS}>Nama Kumiai</label>
-                                <select required style={s_inputS} value={editJobForm.kumiai || ''} onChange={(e) => setEditJobForm({...editJobForm, kumiai: e.target.value})}>
+                                <label style={styles.lb}>Nama Kumiai</label>
+                                <select required style={styles.inp} value={editJobForm.kumiai || ''} onChange={(e) => setEditJobForm({...editJobForm, kumiai: e.target.value})}>
                                     <option value="">-- Pilih Kumiai --</option>
                                     {masterKumiai.map((k, i) => {
                                         const val = k.nama_kumiai || k.kumiai || k.nama || Object.values(k)[1];
@@ -490,26 +454,26 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                 </select>
                             </div>
 
-                            <div><label style={s_labelS}>Kuota Peserta</label><input style={s_inputS} type="number" required min="1" value={editJobForm.kuota || 0} onChange={(e) => setEditJobForm({...editJobForm, kuota: parseInt(e.target.value)})} /></div>
+                            <div><label style={styles.lb}>Kuota Peserta</label><input style={styles.inp} type="number" required min="1" value={editJobForm.kuota || 0} onChange={(e) => setEditJobForm({...editJobForm, kuota: parseInt(e.target.value)})} /></div>
                             <div>
-                                <label style={s_labelS}>Status Utama Sistem</label>
-                                <select style={s_inputS} value={editJobForm.status || 'AKTIF'} onChange={(e) => setEditJobForm({...editJobForm, status: e.target.value})}>
+                                <label style={styles.lb}>Status Utama Sistem</label>
+                                <select style={styles.inp} value={editJobForm.status || 'AKTIF'} onChange={(e) => setEditJobForm({...editJobForm, status: e.target.value})}>
                                     <option value="AKTIF">AKTIF</option><option value="RECRUITING">RECRUITING</option><option value="CETAK">CETAK</option>
                                     <option value="PELATIHAN">PELATIHAN</option><option value="WAWANCARA">WAWANCARA</option><option value="SELESAI">SELESAI</option><option value="CANCEL">CANCEL</option>
                                 </select>
                             </div>
                             
-                            <div><label style={s_labelS}>Tanggal Recruiting</label><input type="datetime-local" style={s_inputS} value={editJobForm.tanggal_recruiting || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_recruiting: e.target.value})} /></div>
-                            <div><label style={s_labelS}>Tanggal Pelatihan</label><input type="datetime-local" style={s_inputS} value={editJobForm.tanggal_pelatihan || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_pelatihan: e.target.value})} /></div>
-                            <div><label style={s_labelS}>Tanggal Wawancara</label><input type="datetime-local" style={s_inputS} value={editJobForm.tanggal_wawancara || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_wawancara: e.target.value})} /></div>
-                            <div><label style={s_labelS}>Tanggal Selesai</label><input type="datetime-local" style={s_inputS} value={editJobForm.tanggal_selesai || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_selesai: e.target.value})} /></div>
+                            <div><label style={styles.lb}>Tanggal Recruiting</label><input type="datetime-local" style={styles.inp} value={editJobForm.tanggal_recruiting || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_recruiting: e.target.value})} /></div>
+                            <div><label style={styles.lb}>Tanggal Pelatihan</label><input type="datetime-local" style={styles.inp} value={editJobForm.tanggal_pelatihan || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_pelatihan: e.target.value})} /></div>
+                            <div><label style={styles.lb}>Tanggal Wawancara</label><input type="datetime-local" style={styles.inp} value={editJobForm.tanggal_wawancara || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_wawancara: e.target.value})} /></div>
+                            <div><label style={styles.lb}>Tanggal Selesai</label><input type="datetime-local" style={styles.inp} value={editJobForm.tanggal_selesai || ''} onChange={(e) => setEditJobForm({...editJobForm, tanggal_selesai: e.target.value})} /></div>
 
-                            <div style={{ gridColumn: '1 / -1' }}><label style={s_labelS}>Catatan Khusus</label><textarea style={{...s_inputS, resize: 'vertical'}} rows="2" value={editJobForm.catatan || ''} onChange={(e) => setEditJobForm({...editJobForm, catatan: e.target.value})}></textarea></div>
+                            <div style={{ gridColumn: '1 / -1' }}><label style={styles.lb}>Catatan Khusus</label><textarea style={{...styles.inp, resize: 'vertical'}} rows="2" value={editJobForm.catatan || ''} onChange={(e) => setEditJobForm({...editJobForm, catatan: e.target.value})}></textarea></div>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', position: 'sticky', bottom: 0, background: '#f8fafc', padding: '25px 30px', borderTop: '1px solid #e2e8f0', borderBottomLeftRadius: '20px', borderBottomRightRadius: '20px' }}>
-                            <button type="button" onClick={() => setIsEditJobOpen(false)} style={{ padding: '14px 25px', background: 'white', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>Batal</button>
-                            <button type="submit" disabled={isSubmitting} style={{ padding: '14px 30px', background: brandNavy, color: 'white', border: 'none', borderRadius: '10px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1rem' }}>
+                            <button type="button" onClick={() => setIsEditJobOpen(false)} style={styles.cancelBtn}>Batal</button>
+                            <button type="submit" disabled={isSubmitting} style={styles.btnPrimary}>
                                 {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20} /> Simpan Perubahan</>}
                             </button>
                         </div>
@@ -519,8 +483,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
 
             {/* ── MODAL HASIL SELEKSI ── */}
             {isModalOpen && (
-                <div style={s_modalOverlay}>
-                    <div style={{...s_modalContent, padding: 0, width: '550px'}}>
+                <div style={styles.modalOverlay}>
+                    <div style={{...styles.modalContent, padding: 0, width: '550px'}}>
                         <div style={{ background: '#8b5cf6', color: 'white', padding: '25px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
                             <div>
                                 <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.5rem' }}>Input Hasil Seleksi</h2>
@@ -531,8 +495,8 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                         <form onSubmit={handleSaveSeleksi}>
                             <div style={{ padding: '30px' }}>
                                 <div style={{ marginBottom: '25px' }}>
-                                    <label style={s_labelS}>Keputusan / Hasil Akhir</label>
-                                    <select required value={selectionData.status} onChange={(e) => setSelectionData({...selectionData, status: e.target.value})} style={{...s_inputS, fontSize: '1.2rem', fontWeight: 900, padding: '15px'}}>
+                                    <label style={styles.lb}>Keputusan / Hasil Akhir</label>
+                                    <select required value={selectionData.status} onChange={(e) => setSelectionData({...selectionData, status: e.target.value})} style={{...styles.inp, fontSize: '1.2rem', fontWeight: 900, padding: '15px'}}>
                                         <option value="">-- Tentukan Hasil --</option>
                                         <option value="LULUS">✅ LULUS (MATCHED)</option>
                                         <option value="TIDAK LULUS">❌ TIDAK LULUS</option>
@@ -540,11 +504,11 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
                                         <option value="CANCEL">🚫 CANCEL</option>
                                     </select>
                                 </div>
-                                <div><label style={s_labelS}>Catatan Evaluasi (Opsional)</label><textarea rows="3" value={selectionData.notes} onChange={(e) => setSelectionData({...selectionData, notes: e.target.value})} style={{...s_inputS, resize: 'vertical', fontSize: '1rem'}} placeholder="Kelebihan, kekurangan, alasan gagal..."></textarea></div>
+                                <div><label style={styles.lb}>Catatan Evaluasi (Opsional)</label><textarea rows="3" value={selectionData.notes} onChange={(e) => setSelectionData({...selectionData, notes: e.target.value})} style={{...styles.inp, resize: 'vertical', fontSize: '1rem'}} placeholder="Kelebihan, kekurangan, alasan gagal..."></textarea></div>
                             </div>
                             <div style={{ padding: '25px 30px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '15px', background: '#f8fafc', borderBottomLeftRadius: '20px', borderBottomRightRadius: '20px' }}>
-                                <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '14px 25px', background: 'white', border: '1px solid #cbd5e1', color: '#64748b', fontWeight: 800, borderRadius: '10px', cursor: 'pointer', fontSize: '1rem' }}>Batal</button>
-                                <button type="submit" disabled={isSubmitting} style={{ padding: '14px 30px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 900, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1rem' }}>
+                                <button type="button" onClick={() => setIsModalOpen(false)} style={styles.cancelBtn}>Batal</button>
+                                <button type="submit" disabled={isSubmitting} style={{...styles.btnPrimary, background: '#8b5cf6'}}>
                                     {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : 'Simpan Hasil'}
                                 </button>
                             </div>
@@ -555,16 +519,3 @@ export default function JobOrderDetail({ jobOrder, onBack }) {
         </div>
     );
 }
-
-// ── STYLE OBJECTS (Terproteksi Anti-Error) ──
-const s_btnSidebar = { width: '100%', padding: '14px 20px', borderRadius: '10px', border: 'none', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '1rem', transition: '0.2s' };
-const s_btnStatus = { background: 'white', border: '1px solid #cbd5e1', padding: '8px 15px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 900, color: '#3b82f6', cursor: 'pointer', transition: '0.2s' };
-const s_tdLabel = { width: '240px', padding: '14px 0', fontWeight: 800, color: '#64748b', fontSize: '1rem' };
-const s_tdValue = { padding: '14px 0', color: '#0f172a', fontWeight: 900, fontSize: '1.05rem' };
-const s_thStyle = { padding: '18px 20px', textAlign: 'left', color: '#64748b', fontSize: '0.85rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px', borderRight: '1px solid #e2e8f0' };
-const s_tdStyle = { padding: '18px 20px', verticalAlign: 'middle', fontSize: '1rem', color: '#334155', borderRight: '1px solid #e2e8f0' };
-
-const s_modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(6px)' };
-const s_modalContent = { background: 'white', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative' };
-const s_labelS = { display: 'block', fontSize: '0.8rem', fontWeight: 900, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const s_inputS = { width: '100%', padding: '14px 18px', borderRadius: '10px', border: '2px solid #cbd5e1', outline: 'none', fontSize: '1rem', color: '#1e293b', background: '#f8fafc', transition: 'border-color 0.2s' };

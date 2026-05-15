@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import { authService } from './services/authService';
+
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import VisiMisi from './pages/About/VisiMisi';
@@ -26,12 +28,13 @@ import DashboardAdministrasi from './pages/Administrasi/DashboardAdministrasi';
 
 // ── IMPORT KOMPONEN SUPERVISOR, DIREKTUR, & SUPER ADMIN ──
 import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
+import SpvDokumenDashboard from './pages/Supervisor/SpvDokumenDashboard'; // <-- IMPORT BARU SPV DOKUMEN
 import DashboardDirektur from './pages/Direktur/DashboardDirektur';
 import DashboardSuperAdmin from './pages/AdminGate/DashboardSuperAdmin';
 
 // ── IMPORT KOMPONEN MASTER DATA ──
-import MasterKumiai from './pages/Supervisor/MasterKumiai'; // <-- SESUAIKAN PATH FOLDER TUAN
-import MasterKaisha from './pages/Supervisor/MasterKaisha'; // <-- SESUAIKAN PATH FOLDER TUAN
+import MasterKumiai from './pages/Supervisor/MasterKumiai'; 
+import MasterKaisha from './pages/Supervisor/MasterKaisha'; 
 
 // ── IMPORT KOMPONEN ALUMNI ──
 import DashboardAlumni from './pages/Alumni/DashboardAlumni';
@@ -43,7 +46,7 @@ import DashboardMitra from './pages/Mitra/DashboardMitra';
 import PrintRirekisho from './components/PrintRirekisho'; 
 import PrintLaporanKaisha from './components/PrintLaporanKaisha';
 
-// ── IMPORT RUTE INVOICE & KWITANSI (DARI FOLDER COMPONENTS) ──
+// ── IMPORT RUTE INVOICE & KWITANSI ──
 import PrintInvoiceKumiai from './components/PrintInvoiceKumiai';
 import PrintInvoiceSummary from './components/PrintInvoiceSummary'; 
 import PrintKwitansiSiswa from './components/PrintKwitansiSiswa'; 
@@ -68,56 +71,49 @@ function AppContent() {
   const [newsData, setNewsData] = useState([]);
   const location = useLocation();
 
-  // ── STATE AUTH DINAMIS (REAL DATABASE) ──
+  // ── STATE AUTH DINAMIS ──
   const [userRole, setUserRole] = useState(null); 
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // ── LISTENER OTENTIKASI ──
+  // ── LOGIKA AUTHENTICATION YANG SUDAH DI-OPTIMALKAN ──
   useEffect(() => {
-    const fetchSessionRole = async (session) => {
-      if (session) {
-        // 1. Cek apakah user adalah Pegawai Internal
-        const { data: emp } = await supabase
-          .from('employees')
-          .select('master_role(nama_role)')
-          .eq('id', session.user.id)
-          .maybeSingle(); 
-        
-        if (emp && emp.master_role) {
-          setUserRole(emp.master_role.nama_role.toUpperCase());
-          setIsAuthLoading(false);
-          return;
-        }
+    let isMounted = true; // Pengaman untuk menghindari state update pada unmounted component
 
-        // 2. Jika bukan pegawai, cek apakah user adalah Mitra
-        const { data: mitra } = await supabase
-          .from('master_mitra_lokal')
-          .select('id')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        if (mitra) {
-          setUserRole('MITRA');
+    const fetchRoleAndSetUser = async (session) => {
+      try {
+        if (session) {
+          const role = await authService.getUserRole(session.user.id);
+          if (isMounted) setUserRole(role);
         } else {
-          setUserRole(null);
+          if (isMounted) setUserRole(null);
         }
-      } else {
-        setUserRole(null);
+      } catch (error) {
+        console.error("Gagal menginisialisasi sesi:", error.message);
+        if (isMounted) setUserRole(null);
+      } finally {
+        if (isMounted) setIsAuthLoading(false);
       }
-      setIsAuthLoading(false);
     };
 
-    // Cek sesi saat pertama kali dimuat
+    // 1. Eksekusi pengecekan awal saat aplikasi dibuka
     supabase.auth.getSession().then(({ data: { session } }) => {
-      fetchSessionRole(session);
+      fetchRoleAndSetUser(session);
     });
 
-    // Dengarkan perubahan sesi (Login/Logout)
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      fetchSessionRole(session);
+    // 2. Listener hanya difokuskan pada event login dan logout murni (Abaikan TOKEN_REFRESHED)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        setIsAuthLoading(true);
+        fetchRoleAndSetUser(session);
+      } else if (event === 'SIGNED_OUT') {
+        if (isMounted) setUserRole(null);
+      }
     });
 
-    return () => { authListener.subscription.unsubscribe(); };
+    return () => { 
+        isMounted = false;
+        subscription.unsubscribe(); 
+    };
   }, []);
 
   const fetchNews = useCallback(async () => {
@@ -135,7 +131,7 @@ function AppContent() {
 
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
-  // Daftar rute sistem (navbar dinonaktifkan di sini) - PERHATIKAN PENAMBAHAN ROUTE MASTER
+  // Daftar rute sistem (navbar dinonaktifkan di sini) 
   const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/master-kumiai', '/master-kaisha', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-kwitansi-siswa', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
 
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
@@ -166,7 +162,7 @@ function AppContent() {
           {/* ── RUTE COMMAND CENTER SUPER ADMIN ── */}
           <Route path="/superadmin/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN']}><DashboardSuperAdmin /></ProtectedRoute>} />
 
-          {/* ── RUTE MASTER DATA (DIBUKA UNTUK REGULER & SUPERVISOR/DIREKTUR) ── */}
+          {/* ── RUTE MASTER DATA ── */}
           <Route path="/master-kumiai" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN', 'REGULER', 'SUPERVISOR', 'DIREKTUR']}><MasterKumiai /></ProtectedRoute>} />
           <Route path="/master-kaisha" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN', 'REGULER', 'SUPERVISOR', 'DIREKTUR']}><MasterKaisha /></ProtectedRoute>} />
 
@@ -176,8 +172,9 @@ function AppContent() {
           <Route path="/dokumen/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'DIREKTUR', 'SUPERVISOR']}><DashboardDokumen /></ProtectedRoute>} />
           <Route path="/pendidikan/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDIDIKAN', 'DIREKTUR', 'SUPERVISOR']}><DashboardPendidikan /></ProtectedRoute>} />
           
-          {/* ── RUTE SUPERVISOR & DIREKTUR ── */}
-          <Route path="/supervisor/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><DashboardSupervisor /></ProtectedRoute>} />
+          {/* ── RUTE SUPERVISOR & DIREKTUR (DIPISAH) ── */}
+          <Route path="/supervisor/rekrutmen" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><DashboardSupervisor /></ProtectedRoute>} />
+          <Route path="/supervisor/dokumen" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><SpvDokumenDashboard /></ProtectedRoute>} />
           <Route path="/direktur/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DIREKTUR', 'SUPERVISOR']}><DashboardDirektur /></ProtectedRoute>} />
 
           {/* ── RUTE PANTAUAN ALUMNI ── */}
@@ -190,7 +187,7 @@ function AppContent() {
           <Route path="/print-cv/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'DOKUMEN', 'REGULER']}><PrintRirekisho /></ProtectedRoute>} />
           <Route path="/print-laporan-kaisha/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR', 'REGULER', 'DOKUMEN']}><PrintLaporanKaisha /></ProtectedRoute>} />
           
-          {/* ── RUTE INVOICE & KWITANSI (KEUANGAN) ── */}
+          {/* ── RUTE INVOICE & KWITANSI ── */}
           <Route path="/print-invoice-detail/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceKumiai /></ProtectedRoute>} />
           <Route path="/print-invoice-summary/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintInvoiceSummary /></ProtectedRoute>} />
           <Route path="/print-kwitansi-siswa/:id" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'SUPERVISOR', 'DIREKTUR']}><PrintKwitansiSiswa /></ProtectedRoute>} /> 

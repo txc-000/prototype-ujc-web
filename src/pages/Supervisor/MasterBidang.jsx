@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supervisorService } from '../../services/supervisorService'; 
 import { Plus, Trash2, Loader2, Layers } from 'lucide-react';
 
-const brandNavy = '#101869';
+// IMPORT STYLES SENTRAL
+import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
 
 export default function MasterBidang() {
     const [bidang, setBidang] = useState([]);
@@ -14,30 +15,41 @@ export default function MasterBidang() {
 
     const fetchBidang = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase.from('master_bidang').select('*').order('nama_bidang', { ascending: true });
-        if (!error && data) setBidang(data);
-        setIsLoading(false);
+        try {
+            const data = await supervisorService.getMasterBidangList();
+            setBidang(data);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleAdd = async (e) => {
         e.preventDefault();
         if(!newBidang.trim()) return;
         setIsSubmitting(true);
-        const { error } = await supabase.from('master_bidang').insert([{ nama_bidang: newBidang.toUpperCase() }]);
-        setIsSubmitting(false);
-        if (error) {
-            alert("Gagal menambahkan. Pastikan nama bidang belum ada.");
-        } else { 
+        
+        try {
+            await supervisorService.addMasterBidang(newBidang);
             setNewBidang(''); 
             fetchBidang(); 
+        } catch (error) {
+            alert("Gagal menambahkan. Pastikan nama bidang belum ada.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleDelete = async (id, nama) => {
         if(!window.confirm(`Yakin ingin menghapus bidang: ${nama}?`)) return;
-        const { error } = await supabase.from('master_bidang').delete().eq('id', id);
-        if(!error) fetchBidang();
-        else alert("Gagal menghapus data.");
+        
+        try {
+            await supervisorService.deleteMasterBidang(id);
+            fetchBidang();
+        } catch (error) {
+            alert("Gagal menghapus data.");
+        }
     };
 
     return (
@@ -55,9 +67,9 @@ export default function MasterBidang() {
                         value={newBidang} 
                         onChange={(e) => setNewBidang(e.target.value)} 
                         required
-                        style={{ flex: 1, padding: '12px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#f8fafc' }} 
+                        style={{ ...styles.inp, flex: 1 }} 
                     />
-                    <button type="submit" disabled={isSubmitting} style={{ background: brandNavy, color: 'white', border: 'none', padding: '0 25px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button type="submit" disabled={isSubmitting} style={{ ...styles.btnPrimary, padding: '0 25px' }}>
                         {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <><Plus size={18} /> Tambah Bidang</>}
                     </button>
                 </form>
@@ -69,7 +81,7 @@ export default function MasterBidang() {
                         {bidang.map(b => (
                             <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '8px' }}>
                                 <span style={{ fontWeight: 700, color: '#334155' }}>{b.nama_bidang}</span>
-                                <button onClick={() => handleDelete(b.id, b.nama_bidang)} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', padding: '6px', borderRadius: '6px', cursor: 'pointer' }}>
+                                <button onClick={() => handleDelete(b.id, b.nama_bidang)} style={styles.btnDel}>
                                     <Trash2 size={16} />
                                 </button>
                             </div>

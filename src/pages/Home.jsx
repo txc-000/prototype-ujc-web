@@ -1,7 +1,7 @@
 import { t } from '../translations';
 import NewsSection from '../components/NewsSection';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Users } from 'lucide-react'; // Tambahkan icon Users
+import { LogIn, Users } from 'lucide-react'; 
 
 // IMPORT LOGO SECARA LANGSUNG (Pastikan file logo.png ada di folder src/assets/)
 import logoUJC from '../assets/logo.png';
@@ -38,12 +38,24 @@ export default function Home({ lang, newsData }) {
           padding: '25px 5%', zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            {/* Pemanggilan logo dari hasil import */}
             <img src={logoUJC} alt="UJC Logo" style={{ height: '55px', objectFit: 'contain' }} />
             <div style={{ color: 'white', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '1px', textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
               UNIVERSAL JAPAN COURSE
             </div>
           </div>
+
+          {/* Tombol Login Baru */}
+          <button 
+            onClick={() => navigate('/login')}
+            style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.5)',
+                padding: '8px 16px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer',
+                transition: '0.3s'
+            }}
+          >
+            <LogIn size={18} /> Login Sistem
+          </button>
         </nav>
         
         {/* ── HERO KONTEN ── */}
@@ -63,7 +75,7 @@ export default function Home({ lang, newsData }) {
               {text.hero_desc}
             </p>
 
-            {/* ── GRUP TOMBOL CTA (CALL TO ACTION) ── */}
+            {/* ── GRUP TOMBOL CTA ── */}
             <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
               <button style={{ background: brandYellow, color: brandNavy, padding: '1.2rem 2.5rem', borderRadius: '4px', border: 'none', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', boxShadow: `0 10px 30px rgba(253, 251, 6, 0.3)` }}>
                 {lang === 'ID' ? 'Daftar Sekarang' : '今すぐ登録'}
@@ -77,27 +89,15 @@ export default function Home({ lang, newsData }) {
               <button 
                 onClick={() => navigate('/etalase')}
                 style={{ 
-                    background: 'rgba(255, 255, 255, 0.1)', 
-                    color: 'white', 
-                    padding: '1.2rem 2.5rem', 
-                    borderRadius: '4px', 
-                    border: '1px solid rgba(255, 255, 255, 0.3)', 
-                    fontWeight: 800, 
-                    fontSize: '1rem', 
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    backdropFilter: 'blur(5px)',
-                    transition: 'all 0.3s ease'
+                    background: 'rgba(255, 255, 255, 0.1)', color: 'white', padding: '1.2rem 2.5rem', 
+                    borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.3)', fontWeight: 800, 
+                    fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                    backdropFilter: 'blur(5px)', transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'; }}
               >
                 <Users size={20} />
                 {lang === 'ID' ? 'Etalase Kandidat' : '候補者ショーケース'}
               </button>
-
             </div>
           </div>
         </div>

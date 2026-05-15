@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supervisorService } from '../../services/supervisorService'; 
 import { Building2, Loader2, Printer, PieChart } from 'lucide-react';
-
-const brandNavy = '#101869';
+import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
 
 export default function LaporanEvaluasiMitra() {
     const [students, setStudents] = useState([]);
@@ -16,15 +15,8 @@ export default function LaporanEvaluasiMitra() {
     const fetchDataMitra = async () => {
         setIsLoading(true);
         try {
-            // Hanya tarik data siswa yang berasal dari Mitra (lpk_asal tidak kosong)
-            const { data, error } = await supabase
-                .from('students')
-                .select('lpk_asal, tahap_sekarang, status_akhir, medical_checkup_status, created_at')
-                .not('lpk_asal', 'is', null)
-                .neq('lpk_asal', '');
-
-            if (error) throw error;
-            setStudents(data || []);
+            const data = await supervisorService.getMitraEvaluationData();
+            setStudents(data);
         } catch (error) {
             console.error("Gagal menarik data evaluasi:", error.message);
         } finally {
@@ -114,7 +106,7 @@ export default function LaporanEvaluasiMitra() {
     };
 
     return (
-        <div style={{ padding: '30px', background: '#f8fafc', minHeight: '100%', borderRadius: '15px' }}>
+        <div className="fade-in" style={{ padding: '30px', background: '#f8fafc', minHeight: '100%', borderRadius: '15px' }}>
             <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <div>
                     <h1 style={{ fontSize: '2rem', color: '#1e293b', margin: 0, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -126,12 +118,12 @@ export default function LaporanEvaluasiMitra() {
                 </div>
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                     <div>
-                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', marginBottom: '5px', textTransform: 'uppercase' }}>Pilih Bulan Pendaftaran</label>
+                        <label style={styles.lb}>Pilih Bulan Pendaftaran</label>
                         <input 
                             type="month" 
                             value={evalMonth} 
                             onChange={(e) => setEvalMonth(e.target.value)} 
-                            style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', width: '180px', fontWeight: 700, color: '#1e293b' }} 
+                            style={{ ...styles.inpSm, width: '180px' }} 
                         />
                     </div>
                     <button 
@@ -143,16 +135,16 @@ export default function LaporanEvaluasiMitra() {
                 </div>
             </header>
 
-            <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0' }}>
+            <div style={styles.tableContainer}>
+                <table style={styles.tableS}>
+                    <thead style={styles.theadS}>
                         <tr>
-                            <th style={thStyle}>Nama Mitra LPK Asal</th>
-                            <th style={{...thStyle, textAlign:'center'}}>Total Pengajuan</th>
-                            <th style={{...thStyle, textAlign:'center'}}>Lolos Seleksi<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Diklat / Match)</span></th>
-                            <th style={{...thStyle, textAlign:'center'}}>Berhasil Terbang<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Ke Jepang)</span></th>
-                            <th style={{...thStyle, textAlign:'center'}}>Gagal Seleksi<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Arsip/Unfit)</span></th>
-                            <th style={{...thStyle, textAlign:'center'}}>Masih Proses<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Seleksi / MCU)</span></th>
+                            <th style={styles.thStyle}>Nama Mitra LPK Asal</th>
+                            <th style={{...styles.thStyle, textAlign:'center'}}>Total Pengajuan</th>
+                            <th style={{...styles.thStyle, textAlign:'center'}}>Lolos Seleksi<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Diklat / Match)</span></th>
+                            <th style={{...styles.thStyle, textAlign:'center'}}>Berhasil Terbang<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Ke Jepang)</span></th>
+                            <th style={{...styles.thStyle, textAlign:'center'}}>Gagal Seleksi<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Arsip/Unfit)</span></th>
+                            <th style={{...styles.thStyle, textAlign:'center'}}>Masih Proses<br/><span style={{fontSize:'0.65rem', color:'#94a3b8'}}>(Seleksi / MCU)</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -161,16 +153,16 @@ export default function LaporanEvaluasiMitra() {
                         ) : Object.keys(evalData).length === 0 ? (
                             <tr><td colSpan="6" style={{textAlign:'center', padding:'40px', color:'#94a3b8', fontWeight:700}}>Tidak ada data pengajuan mitra pada bulan {evalMonth}.</td></tr>
                         ) : Object.entries(evalData).sort((a, b) => b[1].total - a[1].total).map(([mitra, data]) => (
-                            <tr key={mitra} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{...tdStyle, fontWeight: 800, color: brandNavy}}>
+                            <tr key={mitra} style={styles.trS}>
+                                <td style={{...styles.tdStyle, fontWeight: 800, color: brandNavy}}>
                                     <Building2 size={16} style={{display:'inline', marginBottom:'-3px', marginRight:'5px', color: '#3b82f6'}}/> 
                                     {mitra}
                                 </td>
-                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem'}}>{data.total}</td>
-                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#10b981'}}>{data.lolos}</td>
-                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#8b5cf6'}}>{data.terbang}</td>
-                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#ef4444'}}>{data.gagal}</td>
-                                <td style={{...tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#f59e0b'}}>{data.proses}</td>
+                                <td style={{...styles.tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem'}}>{data.total}</td>
+                                <td style={{...styles.tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#10b981'}}>{data.lolos}</td>
+                                <td style={{...styles.tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#8b5cf6'}}>{data.terbang}</td>
+                                <td style={{...styles.tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#ef4444'}}>{data.gagal}</td>
+                                <td style={{...styles.tdStyle, textAlign:'center', fontWeight: 900, fontSize:'1.1rem', color:'#f59e0b'}}>{data.proses}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -179,7 +171,3 @@ export default function LaporanEvaluasiMitra() {
         </div>
     );
 }
-
-// ── STYLE OBJECTS ──
-const thStyle = { padding: '15px 20px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const tdStyle = { padding: '15px 20px', fontSize: '0.95rem', color: '#334155', verticalAlign: 'middle' };

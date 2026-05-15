@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { 
-    BookOpen, GraduationCap, Search, Loader2, UserCircle, Edit3, X, Award, 
-    BarChart2, BookA, BrainCircuit, Activity, Save, Trash2, Printer, Archive, Download
-} from 'lucide-react';
+import { BookOpen, GraduationCap, Search, UserCircle, Award, BarChart2, Archive, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const brandNavy = '#101869';
+// IMPORT STYLES SENTRAL
+import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
+
+// IMPORT KOMPONEN ANAK
+import TabKelas from './tabs/TabKelas';
+import TabRekapNilai from './tabs/TabRekapNilai';
+import TabBukuInduk from './tabs/TabBukuInduk';
+import ModalEvaluasi from './modals/ModalEvaluasi';
+import ModalRaport from './modals/ModalRaport';
 
 export default function DashboardPendidikan() {
     const navigate = useNavigate();
@@ -23,21 +28,9 @@ export default function DashboardPendidikan() {
     const [filterTahun, setFilterTahun] = useState('');
     const [filterProgram, setFilterProgram] = useState('');
 
-    // ── STATE MODAL EVALUASI ──
-    const [isEvalOpen, setIsEvalOpen] = useState(false);
-    const [evalForm, setEvalForm] = useState({ jenis_tes: 'UJIAN_BAB', nilai: '', catatan: '' });
-
-    // ── STATE MODAL RAPORT ──
-    const [isRaportOpen, setIsRaportOpen] = useState(false);
-    const [pendidikanList, setPendidikanList] = useState([]); 
-    const [raportData, setRaportData] = useState({
-        kotoba: 0, bunpo: 0, dokkai: 0, choukai: 0, kaiwa: 0,
-        kecerdasan: 'B', kedisiplinan: 'B', kerapihan: 'B', perilaku: 'B',
-        kepribadian: 'B', teamwork: 'B', inisiatif: 'B', fisik: 'B'
-    });
-
+    // ── KONTROL MODAL ──
+    const [activeModal, setActiveModal] = useState(null);
     const [selectedStudent, setSelectedStudent] = useState(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // ── HELPER JSON AMAN ──
     const safeParse = (data, fallback) => {
@@ -56,9 +49,7 @@ export default function DashboardPendidikan() {
         initData();
     }, []);
 
-    useEffect(() => {
-        fetchStudents();
-    }, [activeTab]);
+    useEffect(() => { fetchStudents(); }, [activeTab]);
 
     const fetchUserProfile = async (userId) => {
         try {
@@ -72,16 +63,10 @@ export default function DashboardPendidikan() {
         try {
             let query = supabase.from('students').select('*').order('nama_lengkap', { ascending: true });
 
-            if (activeTab === 'KELAS_REGULER') {
-                query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER']);
-            } else if (activeTab === 'KELAS_DIKLAT') {
-                query = query.in('tahap_sekarang', ['PENDIDIKAN DIKLAT']);
-            } else if (activeTab === 'REKAP_NILAI') {
-                query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT', 'AVAILABLE', 'ALUMNI', 'SIAP BERANGKAT']);
-            } else if (activeTab === 'BUKU_INDUK') {
-                // Tarik semua siswa yang sudah masuk tahap edukasi ke atas (kecuali Registrasi & Seleksi)
-                query = query.neq('tahap_sekarang', 'REGISTRASI').neq('tahap_sekarang', 'SELEKSI AWAL');
-            }
+            if (activeTab === 'KELAS_REGULER') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER']);
+            else if (activeTab === 'KELAS_DIKLAT') query = query.in('tahap_sekarang', ['PENDIDIKAN DIKLAT']);
+            else if (activeTab === 'REKAP_NILAI') query = query.in('tahap_sekarang', ['PENDIDIKAN REGULER', 'PENDIDIKAN DIKLAT', 'AVAILABLE', 'ALUMNI', 'SIAP BERANGKAT']);
+            else if (activeTab === 'BUKU_INDUK') query = query.neq('tahap_sekarang', 'REGISTRASI').neq('tahap_sekarang', 'SELEKSI AWAL');
 
             const { data, error } = await query;
             if (error) throw error;
@@ -92,13 +77,8 @@ export default function DashboardPendidikan() {
                 pendidikan_history: safeParse(s.pendidikan_history, []),
                 data_raport: safeParse(s.data_raport, {})
             }));
-            
             setStudents(formattedData);
-        } catch (error) { 
-            console.error("Error fetching students:", error); 
-        } finally { 
-            setIsLoading(false); 
-        }
+        } catch (error) { console.error("Error fetching students:", error); } finally { setIsLoading(false); }
     };
 
     const logActivity = async (actionDesc) => {
@@ -118,127 +98,6 @@ export default function DashboardPendidikan() {
         } catch (err) {}
     };
 
-    // ── FITUR EKSPOR KE EXCEL/CSV ──
-    const handleExportCSV = () => {
-        const headers = ['Nama Lengkap', 'NIK', 'Program', 'Tahun', 'Status Pipeline', 'Nilai Rata-Rata', 'Kotoba', 'Bunpo', 'Dokkai', 'Choukai', 'Kaiwa', 'Sikap', 'Disiplin', 'Teamwork', 'Kecerdasan'];
-        
-        const rows = filteredBukuInduk.map(s => {
-            const r = s.data_raport || {};
-            const tahun = new Date(s.created_at).getFullYear();
-            return [
-                `"${s.nama_lengkap}"`,
-                `"${s.nik || '-'}"`,
-                `"${s.program || '-'}"`,
-                `"${tahun}"`,
-                `"${s.tahap_sekarang}"`,
-                s.nilai_bahasa || 0,
-                r.kotoba || 0,
-                r.bunpo || 0,
-                r.dokkai || 0,
-                r.choukai || 0,
-                r.kaiwa || 0,
-                `"${r.perilaku || '-'}"`,
-                `"${r.kedisiplinan || '-'}"`,
-                `"${r.teamwork || '-'}"`,
-                `"${r.kecerdasan || '-'}"`
-            ].join(',');
-        });
-
-        const csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + "\n" + rows.join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `Buku_Induk_Nilai_UJC_${new Date().getFullYear()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const openEvalModal = (student) => {
-        setSelectedStudent(student);
-        setEvalForm({ jenis_tes: 'UJIAN BAB', nilai: '', catatan: '' });
-        setIsEvalOpen(true);
-    };
-
-    const handleEvalSubmit = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            const dateStr = new Date().toLocaleDateString('id-ID');
-            const newRecord = {
-                tanggal: dateStr, jenis_tes: evalForm.jenis_tes,
-                nilai: Number(evalForm.nilai), catatan: evalForm.catatan, instruktur: userProfile?.nama_lengkap
-            };
-
-            const currentHistory = selectedStudent.nilai_history || [];
-            const updatedHistory = [...currentHistory, newRecord];
-            const totalNilai = updatedHistory.reduce((sum, item) => sum + item.nilai, 0);
-            const avgNilai = Math.round(totalNilai / updatedHistory.length);
-
-            const { error } = await supabase.from('students')
-                .update({ nilai_history: updatedHistory, nilai_bahasa: avgNilai, updated_at: new Date() })
-                .eq('id', selectedStudent.id);
-
-            if (error) throw error;
-            await logActivity(`Input nilai ${evalForm.jenis_tes} untuk ${selectedStudent.nama_lengkap}`);
-            await incrementPoint();
-
-            alert("Nilai evaluasi harian berhasil disimpan!");
-            setIsEvalOpen(false);
-            fetchStudents();
-        } catch (err) { alert(err.message); } finally { setIsSubmitting(false); }
-    };
-
-    const openRaportModal = (student) => {
-        setSelectedStudent(student);
-        const parsedRaport = student.data_raport || {};
-        const parsedPendidikan = student.pendidikan_history || [];
-        
-        setPendidikanList(Array.isArray(parsedPendidikan) ? parsedPendidikan : []);
-        setRaportData({
-            kotoba: parsedRaport.kotoba || 0, bunpo: parsedRaport.bunpo || 0,
-            dokkai: parsedRaport.dokkai || 0, choukai: parsedRaport.choukai || 0, kaiwa: parsedRaport.kaiwa || 0,
-            kecerdasan: parsedRaport.kecerdasan || 'B', kedisiplinan: parsedRaport.kedisiplinan || 'B',
-            kerapihan: parsedRaport.kerapihan || 'B', perilaku: parsedRaport.perilaku || 'B',
-            kepribadian: parsedRaport.kepribadian || 'B', teamwork: parsedRaport.teamwork || 'B',
-            inisiatif: parsedRaport.inisiatif || 'B', fisik: parsedRaport.fisik || 'B'
-        });
-        setIsRaportOpen(true);
-    };
-
-    const handleRaportChange = (e) => {
-        const { name, value, type } = e.target;
-        setRaportData({ ...raportData, [name]: type === 'number' ? Number(value) : value });
-    };
-
-    const addPendidikan = () => setPendidikanList([...pendidikanList, { jenjang: '', nama_sekolah: '', jurusan: '', bln_awal: '', thn_awal: '', bln_akhir: '', thn_akhir: '' }]);
-    const updatePendidikan = (index, field, value) => { const newArr = [...pendidikanList]; newArr[index][field] = value; setPendidikanList(newArr); };
-    const removePendidikan = (index) => setPendidikanList(pendidikanList.filter((_, i) => i !== index));
-
-    const saveRaportForm = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            const totAkad = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
-            const finalAvg = Math.round(totAkad / 5);
-
-            const { error } = await supabase.from('students')
-                .update({ 
-                    data_raport: raportData, 
-                    pendidikan_history: pendidikanList, 
-                    nilai_bahasa: finalAvg,
-                    updated_at: new Date() 
-                })
-                .eq('id', selectedStudent.id);
-
-            if (error) throw error;
-            await logActivity(`Update raport & history pendidikan: ${selectedStudent.nama_lengkap}`);
-            alert(`Data Raport disimpan. Rata-rata akhir siswa ditetapkan menjadi ${finalAvg}.`);
-            setIsRaportOpen(false);
-            fetchStudents();
-        } catch (err) { alert('Gagal menyimpan: ' + err.message); } finally { setIsSubmitting(false); }
-    };
-
     const handleLulusKelas = async (id, nama) => {
         if(!window.confirm(`Luluskan ${nama} dari kelas ini? Status akan diset AVAILABLE`)) return;
         try {
@@ -249,9 +108,12 @@ export default function DashboardPendidikan() {
         } catch (err) { alert(err.message); }
     };
 
+    const openModal = (type, student) => { setSelectedStudent(student); setActiveModal(type); };
+    const closeModal = () => { setActiveModal(null); setSelectedStudent(null); };
+
     const filteredStudents = students.filter(s => s.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    // Khusus Untuk Filter Buku Induk
+    // Data Ekstra untuk Buku Induk
     const uniqueTahun = [...new Set(students.map(s => new Date(s.created_at).getFullYear()))].sort((a,b) => b-a);
     const uniqueProgram = [...new Set(students.map(s => s.program).filter(Boolean))].sort();
 
@@ -261,24 +123,40 @@ export default function DashboardPendidikan() {
         return tahunMatch && programMatch;
     });
 
-    const totalAkademikModal = Number(raportData.kotoba) + Number(raportData.bunpo) + Number(raportData.dokkai) + Number(raportData.choukai) + Number(raportData.kaiwa);
-    const rataRataRaportModal = (totalAkademikModal / 5).toFixed(1);
+    const handleExportCSV = () => {
+        const headers = ['Nama Lengkap', 'NIK', 'Program', 'Tahun', 'Status Pipeline', 'Nilai Rata-Rata', 'Kotoba', 'Bunpo', 'Dokkai', 'Choukai', 'Kaiwa', 'Sikap', 'Disiplin', 'Teamwork', 'Kecerdasan'];
+        const rows = filteredBukuInduk.map(s => {
+            const r = s.data_raport || {};
+            const tahun = new Date(s.created_at).getFullYear();
+            return [ `"${s.nama_lengkap}"`, `"${s.nik || '-'}"`, `"${s.program || '-'}"`, `"${tahun}"`, `"${s.tahap_sekarang}"`, s.nilai_bahasa || 0, r.kotoba || 0, r.bunpo || 0, r.dokkai || 0, r.choukai || 0, r.kaiwa || 0, `"${r.perilaku || '-'}"`, `"${r.kedisiplinan || '-'}"`, `"${r.teamwork || '-'}"`, `"${r.kecerdasan || '-'}"` ].join(',');
+        });
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + "\n" + rows.join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Buku_Induk_Nilai_UJC_${new Date().getFullYear()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'sans-serif' }}>
+            
+            {/* ── SIDEBAR ── */}
             <aside style={{ width: '260px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '25px 20px', borderBottom: '1px solid #e2e8f0', background: brandNavy, color: 'white' }}>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Div. Pendidikan</h2>
                     <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', opacity: 0.8 }}>Akademik & Karakter</p>
                 </div>
                 <nav style={{ padding: '20px 15px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginBottom: '5px' }}>AKADEMIK AKTIF</div>
-                    <button onClick={() => setActiveTab('KELAS_REGULER')} style={activeTab === 'KELAS_REGULER' ? activeMenuS : inactiveMenuS}><BookOpen size={18} /> Kelas Reguler (Dasar)</button>
-                    <button onClick={() => setActiveTab('KELAS_DIKLAT')} style={activeTab === 'KELAS_DIKLAT' ? activeMenuS : inactiveMenuS}><GraduationCap size={18} /> Kelas Diklat (Pematangan)</button>
-                    <button onClick={() => setActiveTab('REKAP_NILAI')} style={activeTab === 'REKAP_NILAI' ? activeMenuS : inactiveMenuS}><BarChart2 size={18} /> Evaluasi Kartu Siswa</button>
+                    <div style={styles.sidebarLabel}>AKADEMIK AKTIF</div>
+                    <button onClick={() => setActiveTab('KELAS_REGULER')} style={activeTab === 'KELAS_REGULER' ? styles.activeMenuS : styles.inactiveMenuS}><BookOpen size={18} /> Kelas Reguler (Dasar)</button>
+                    <button onClick={() => setActiveTab('KELAS_DIKLAT')} style={activeTab === 'KELAS_DIKLAT' ? styles.activeMenuS : styles.inactiveMenuS}><GraduationCap size={18} /> Kelas Diklat (Pematangan)</button>
+                    <button onClick={() => setActiveTab('REKAP_NILAI')} style={activeTab === 'REKAP_NILAI' ? styles.activeMenuS : styles.inactiveMenuS}><BarChart2 size={18} /> Evaluasi Kartu Siswa</button>
                     
-                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', paddingLeft: '5px', marginTop: '15px', marginBottom: '5px' }}>ARSIP & PEMBUKUAN</div>
-                    <button onClick={() => setActiveTab('BUKU_INDUK')} style={activeTab === 'BUKU_INDUK' ? activeMenuS : inactiveMenuS}><Archive size={18} /> Buku Induk Nilai</button>
+                    <div style={styles.sidebarLabel}>ARSIP & PEMBUKUAN</div>
+                    <button onClick={() => setActiveTab('BUKU_INDUK')} style={activeTab === 'BUKU_INDUK' ? styles.activeMenuS : styles.inactiveMenuS}><Archive size={18} /> Buku Induk Nilai</button>
                 </nav>
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
@@ -292,6 +170,7 @@ export default function DashboardPendidikan() {
                 </div>
             </aside>
 
+            {/* ── KONTEN UTAMA ── */}
             <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
                 <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
@@ -308,7 +187,7 @@ export default function DashboardPendidikan() {
                     <div style={{ display: 'flex', gap: '15px' }}>
                         <div style={{ position: 'relative' }}>
                             <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '15px', top: '12px' }} />
-                            <input type="text" placeholder="Cari Nama Siswa..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '10px 15px 10px 45px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', width: '250px' }} />
+                            <input type="text" placeholder="Cari Nama Siswa..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ ...styles.inp, paddingLeft: '45px', width: '250px' }} />
                         </div>
                         {activeTab === 'BUKU_INDUK' && (
                             <button onClick={handleExportCSV} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -318,278 +197,32 @@ export default function DashboardPendidikan() {
                     </div>
                 </header>
 
-                {activeTab === 'BUKU_INDUK' && (
-                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '5px', display: 'block' }}>Tahun Masuk</label>
-                            <select value={filterTahun} onChange={e => setFilterTahun(e.target.value)} style={inputS}>
-                                <option value="">-- Semua Tahun --</option>
-                                {uniqueTahun.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '5px', display: 'block' }}>Kategori Program</label>
-                            <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} style={inputS}>
-                                <option value="">-- Semua Program --</option>
-                                {uniqueProgram.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                )}
-
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                    
-                    {/* BUKU INDUK TAMPILAN TABEL */}
-                    {activeTab === 'BUKU_INDUK' ? (
-                        <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
-                                <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <tr>
-                                        <th style={thS}>Data Siswa</th>
-                                        <th style={thS}>Rata²</th>
-                                        <th style={thS}>Rincian Akademik</th>
-                                        <th style={thS}>Karakter Dasar</th>
-                                        <th style={{...thS, textAlign: 'center'}}>Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {isLoading ? <tr><td colSpan="5" style={{padding:'40px', textAlign:'center'}}><Loader2 className="animate-spin" style={{margin:'0 auto'}}/></td></tr> : filteredBukuInduk.map(s => {
-                                        const r = s.data_raport || {};
-                                        return (
-                                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={tdS}>
-                                                    <div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div>
-                                                    <div style={{fontSize:'0.7rem', color:'#64748b', fontWeight: 700}}>{s.program || '-'} • Angk. {new Date(s.created_at).getFullYear()}</div>
-                                                    <div style={{fontSize:'0.7rem', padding: '3px 8px', background: '#eff6ff', color: '#3b82f6', borderRadius: '4px', display: 'inline-block', marginTop: '4px', fontWeight: 800}}>{s.tahap_sekarang}</div>
-                                                </td>
-                                                <td style={tdS}>
-                                                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: brandNavy }}>{s.nilai_bahasa || 0}</span>
-                                                </td>
-                                                <td style={{...tdS, fontSize: '0.8rem'}}>
-                                                    <div style={{display: 'flex', gap: '15px'}}>
-                                                        <div><span style={{color: '#94a3b8'}}>KTB:</span> <b style={{color: '#334155'}}>{r.kotoba || 0}</b></div>
-                                                        <div><span style={{color: '#94a3b8'}}>BNP:</span> <b style={{color: '#334155'}}>{r.bunpo || 0}</b></div>
-                                                        <div><span style={{color: '#94a3b8'}}>DKI:</span> <b style={{color: '#334155'}}>{r.dokkai || 0}</b></div>
-                                                    </div>
-                                                    <div style={{display: 'flex', gap: '15px', marginTop: '4px'}}>
-                                                        <div><span style={{color: '#94a3b8'}}>CHK:</span> <b style={{color: '#334155'}}>{r.choukai || 0}</b></div>
-                                                        <div><span style={{color: '#94a3b8'}}>KWA:</span> <b style={{color: '#334155'}}>{r.kaiwa || 0}</b></div>
-                                                    </div>
-                                                </td>
-                                                <td style={{...tdS, fontSize: '0.8rem'}}>
-                                                    <div><span style={{color: '#94a3b8'}}>Sikap:</span> <b style={{color: '#f59e0b'}}>{r.perilaku || '-'}</b></div>
-                                                    <div style={{marginTop: '2px'}}><span style={{color: '#94a3b8'}}>Disiplin:</span> <b style={{color: '#f59e0b'}}>{r.kedisiplinan || '-'}</b></div>
-                                                </td>
-                                                <td style={{...tdS, textAlign: 'center'}}>
-                                                    <button onClick={() => openRaportModal(s)} style={btnA('#8b5cf6')} title="Edit / Lihat Raport Detail"><Edit3 size={16}/></button>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                    {filteredBukuInduk.length === 0 && !isLoading && <tr><td colSpan="5" style={{padding:'40px', textAlign:'center', color:'#94a3b8', fontWeight:600}}>Tidak ada data arsip yang sesuai.</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : 
-                    activeTab !== 'REKAP_NILAI' ? (
-                        <div style={{ background: 'white', borderRadius: '15px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <tr>
-                                        <th style={thS}>Siswa</th>
-                                        <th style={thS}>Rata-Rata Tes Harian</th>
-                                        <th style={thS}>Riwayat Tes Terakhir</th>
-                                        <th style={{...thS, textAlign: 'center'}}>Aksi Evaluasi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {isLoading ? <tr><td colSpan="4" style={{padding:'40px', textAlign:'center'}}><Loader2 className="animate-spin" style={{margin:'0 auto'}}/></td></tr> : filteredStudents.map(s => {
-                                        const lastRecord = s.nilai_history.length > 0 ? s.nilai_history[s.nilai_history.length - 1] : null;
-                                        return (
-                                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={tdS}>
-                                                    <div style={{fontWeight:800, color: '#1e293b'}}>{s.nama_lengkap}</div>
-                                                    <div style={{fontSize:'0.75rem', color:'#64748b'}}>{s.nik || '-'}</div>
-                                                    {s.perusahaan_tujuan && <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ec4899', marginTop: '4px' }}>📍 {s.perusahaan_tujuan}</div>}
-                                                </td>
-                                                <td style={tdS}>
-                                                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: brandNavy }}>{s.nilai_bahasa || 0}</span> / 100
-                                                </td>
-                                                <td style={tdS}>
-                                                    {lastRecord ? (
-                                                        <div>
-                                                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{lastRecord.jenis_tes}: <span style={{color: '#10b981'}}>{lastRecord.nilai}</span></div>
-                                                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{lastRecord.tanggal} | {lastRecord.catatan}</div>
-                                                        </div>
-                                                    ) : <span style={{color: '#94a3b8', fontSize: '0.8rem'}}>Belum ada tes</span>}
-                                                </td>
-                                                <td style={{...tdS, textAlign: 'center'}}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                                        <button onClick={() => openEvalModal(s)} style={btnA('#f59e0b')} title="Input Ujian Harian/Tryout"><Edit3 size={18}/></button>
-                                                        <button onClick={() => openRaportModal(s)} style={btnA('#8b5cf6')} title="Input Raport Akhir & History"><BookA size={18}/></button>
-                                                        <button onClick={() => window.open(`/print-sertifikat/${s.id}`, '_blank')} style={btnA('#ec4899')} title="Cetak Sertifikat Lulus"><Printer size={18}/></button>
-                                                        <button onClick={() => handleLulusKelas(s.id, s.nama_lengkap)} style={{...btnA('#10b981'), background: '#ecfdf5', fontWeight: 700, fontSize: '0.8rem'}} title="Luluskan Siswa">Luluskan</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                    {filteredStudents.length === 0 && !isLoading && <tr><td colSpan="4" style={{padding:'40px', textAlign:'center', color:'#94a3b8', fontWeight:600}}>Tidak ada siswa di kelas ini.</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
+                <div className="fade-in" style={{ flex: 1, overflowY: 'auto' }}>
+                    {activeTab === 'KELAS_REGULER' || activeTab === 'KELAS_DIKLAT' ? (
+                        <TabKelas 
+                            isLoading={isLoading} filteredStudents={filteredStudents} 
+                            openEvalModal={(s) => openModal('EVALUASI', s)} 
+                            openRaportModal={(s) => openModal('RAPORT', s)} 
+                            handleLulusKelas={handleLulusKelas} 
+                        />
+                    ) : activeTab === 'REKAP_NILAI' ? (
+                        <TabRekapNilai filteredStudents={filteredStudents} />
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                            {filteredStudents.map(s => {
-                                const raport = s.data_raport || {};
-                                const hasRaport = Object.keys(raport).length > 0;
-                                const totAkad = Number(raport.kotoba||0) + Number(raport.bunpo||0) + Number(raport.dokkai||0) + Number(raport.choukai||0) + Number(raport.kaiwa||0);
-                                const avgRaport = totAkad > 0 ? (totAkad / 5).toFixed(1) : 0;
-
-                                return (
-                                    <div key={s.id} style={{ background: 'white', padding: '20px', borderRadius: '15px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px', marginBottom: '15px' }}>
-                                            <div>
-                                                <div style={{ fontWeight: 800, color: '#1e293b' }}>{s.nama_lengkap}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{s.tahap_sekarang}</div>
-                                            </div>
-                                            <div style={{ background: '#eff6ff', color: brandNavy, padding: '8px', borderRadius: '8px', fontWeight: 900, fontSize: '1.2rem', textAlign: 'center' }}>
-                                                {s.nilai_bahasa || 0}
-                                                <div style={{fontSize: '0.6rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase'}}>Rata² Harian</div>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#475569', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span>RAPORT AKHIR (SERTIFIKAT)</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {hasRaport ? <span style={{color: '#10b981'}}>Rata²: {avgRaport}</span> : <span style={{color: '#ef4444'}}>Belum Diisi</span>}
-                                                    <button onClick={() => window.open(`/print-sertifikat/${s.id}`, '_blank')} style={{ background: 'none', border: 'none', color: '#ec4899', cursor: 'pointer', padding: 0 }} title="Cetak Sertifikat Lulus"><Printer size={16}/></button>
-                                                </div>
-                                            </div>
-                                            {hasRaport ? (
-                                                <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '0.75rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                                    <div><span style={{color: '#64748b'}}>Sikap:</span> <b style={{color: '#1e293b'}}>{raport.perilaku}</b></div>
-                                                    <div><span style={{color: '#64748b'}}>Disiplin:</span> <b style={{color: '#1e293b'}}>{raport.kedisiplinan}</b></div>
-                                                    <div><span style={{color: '#64748b'}}>Teamwork:</span> <b style={{color: '#1e293b'}}>{raport.teamwork}</b></div>
-                                                    <div><span style={{color: '#64748b'}}>Fisik:</span> <b style={{color: '#1e293b'}}>{raport.fisik}</b></div>
-                                                </div>
-                                            ) : (
-                                                <div style={{ background: '#fef2f2', padding: '10px', borderRadius: '8px', fontSize: '0.75rem', color: '#991b1b', textAlign: 'center' }}>
-                                                    Data Raport belum dimasukkan.
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#94a3b8', marginBottom: '8px' }}>HISTORY TES HARIAN</div>
-                                            <div style={{ maxHeight: '100px', overflowY: 'auto', paddingRight: '5px' }}>
-                                                {s.nilai_history.length === 0 ? <div style={{fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic'}}>Belum ada riwayat tes harian</div> : s.nilai_history.map((h, i) => (
-                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
-                                                        <div><div style={{fontWeight: 700, color: '#334155'}}>{h.jenis_tes}</div><div style={{color: '#64748b', fontSize: '0.7rem'}}>{h.tanggal}</div></div>
-                                                        <div style={{fontWeight: 800, color: '#3b82f6'}}>{h.nilai}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
+                        <TabBukuInduk 
+                            isLoading={isLoading} filteredBukuInduk={filteredBukuInduk}
+                            filterTahun={filterTahun} setFilterTahun={setFilterTahun}
+                            filterProgram={filterProgram} setFilterProgram={setFilterProgram}
+                            uniqueTahun={uniqueTahun} uniqueProgram={uniqueProgram}
+                            openRaportModal={(s) => openModal('RAPORT', s)}
+                        />
                     )}
                 </div>
 
-                {/* ── MODAL EVALUASI HARIAN ── */}
-                {isEvalOpen && selectedStudent && (
-                    <div style={modalOverlay}>
-                        <div style={modalContent}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
-                                <div><h3 style={{ margin: 0, fontWeight: 900 }}>Evaluasi Pembelajaran</h3><p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{selectedStudent.nama_lengkap}</p></div>
-                                <button onClick={() => setIsEvalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
-                            </div>
-                            <form onSubmit={handleEvalSubmit}>
-                                <div style={{ marginBottom: '15px' }}><label style={labelS}>Jenis Tes</label><select required style={inputS} value={evalForm.jenis_tes} onChange={(e) => setEvalForm({...evalForm, jenis_tes: e.target.value})}><option value="UJIAN BAB">Ujian Bab (Harian)</option><option value="TRYOUT JLPT">Tryout JLPT / JFT</option><option value="UJIAN FISIK">Ujian Fisik / FMD</option><option value="SIKAP ATTITUDE">Penilaian Sikap</option></select></div>
-                                <div style={{ marginBottom: '15px' }}><label style={labelS}>Nilai (0-100)</label><input type="number" min="0" max="100" required style={{...inputS, fontSize: '1.2rem', fontWeight: 800, color: brandNavy}} value={evalForm.nilai} onChange={(e) => setEvalForm({...evalForm, nilai: e.target.value})} /></div>
-                                <div style={{ marginBottom: '25px' }}><label style={labelS}>Catatan Instruktur</label><textarea rows="3" style={{...inputS, resize: 'vertical'}} value={evalForm.catatan} onChange={(e) => setEvalForm({...evalForm, catatan: e.target.value})}></textarea></div>
-                                <button type="submit" disabled={isSubmitting} style={{ width: '100%', background: brandNavy, color: 'white', padding: '14px', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>Simpan Evaluasi</button>
-                            </form>
-                        </div>
-                    </div>
-                )}
+                {/* ── RENDER MODAL DINAMIS ── */}
+                {activeModal === 'EVALUASI' && <ModalEvaluasi student={selectedStudent} userProfile={userProfile} onClose={closeModal} onSuccess={() => { closeModal(); fetchStudents(); }} logActivity={logActivity} incrementPoint={incrementPoint} />}
+                {activeModal === 'RAPORT' && <ModalRaport student={selectedStudent} onClose={closeModal} onSuccess={() => { closeModal(); fetchStudents(); }} logActivity={logActivity} />}
 
-                {/* ── MODAL RAPORT AKHIR & HISTORY PENDIDIKAN ── */}
-                {isRaportOpen && selectedStudent && (
-                    <div style={modalOverlay}>
-                        <form onSubmit={saveRaportForm} style={{...modalContent, width: '900px', maxHeight: '90vh', overflowY: 'auto'}}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px', position: 'sticky', top: '-30px', background: 'white', zIndex: 10 }}>
-                                <div><h3 style={{ margin: 0, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}><Award size={22} color={brandNavy}/> Input Raport Akhir & History</h3><p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Siswa: <span style={{color: '#1e293b'}}>{selectedStudent.nama_lengkap}</span></p></div>
-                                <button type="button" onClick={() => setIsRaportOpen(false)} style={{ border: 'none', background: '#f1f5f9', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18}/></button>
-                            </div>
-                            
-                            <div style={{ padding: '0 5px' }}>
-                                {/* SEGMEN 1: RIWAYAT PENDIDIKAN */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}><h4 style={{...sectionTitle, marginBottom: 0, borderBottom: 'none'}}><GraduationCap size={18}/> Riwayat Pendidikan</h4><button type="button" onClick={addPendidikan} style={{ background: '#dbeafe', color: brandNavy, border: `1px solid ${brandNavy}`, padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>+ Tambah Pendidikan</button></div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
-                                    {pendidikanList.map((edu, idx) => (
-                                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1.5fr 1fr 1fr auto', gap: '10px', alignItems: 'end', background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                            <div><label style={labelS}>Jenjang</label><input style={inputS} value={edu.jenjang} onChange={e => updatePendidikan(idx, 'jenjang', e.target.value)} placeholder="SD/SMP/SMA" /></div>
-                                            <div><label style={labelS}>Nama Sekolah</label><input style={inputS} value={edu.nama_sekolah} onChange={e => updatePendidikan(idx, 'nama_sekolah', e.target.value)} /></div>
-                                            <div><label style={labelS}>Jurusan</label><input style={inputS} value={edu.jurusan} onChange={e => updatePendidikan(idx, 'jurusan', e.target.value)} placeholder="IPA/IPS" /></div>
-                                            <div><label style={labelS}>Masuk</label><div style={{display:'flex', gap:'5px'}}><input style={inputS} placeholder="Bln" value={edu.bln_awal} onChange={e => updatePendidikan(idx, 'bln_awal', e.target.value)} /><input style={inputS} placeholder="Thn" value={edu.thn_awal} onChange={e => updatePendidikan(idx, 'thn_awal', e.target.value)} /></div></div>
-                                            <div><label style={labelS}>Lulus</label><div style={{display:'flex', gap:'5px'}}><input style={inputS} placeholder="Bln" value={edu.bln_akhir} onChange={e => updatePendidikan(idx, 'bln_akhir', e.target.value)} /><input style={inputS} placeholder="Thn" value={edu.thn_akhir} onChange={e => updatePendidikan(idx, 'thn_akhir', e.target.value)} /></div></div>
-                                            <button type="button" onClick={() => removePendidikan(idx)} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={16}/></button>
-                                        </div>
-                                    ))}
-                                    {pendidikanList.length === 0 && <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic', padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>Belum ada data pendidikan...</div>}
-                                </div>
-
-                                {/* SEGMEN 2: NILAI AKADEMIK */}
-                                <h4 style={sectionTitle}><BrainCircuit size={18}/> Nilai Akademik Bahasa Jepang</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '15px' }}>
-                                    <div><label style={labelS}>Kotoba</label><input type="number" required min="0" max="100" style={inputS} name="kotoba" value={raportData.kotoba} onChange={handleRaportChange} /></div>
-                                    <div><label style={labelS}>Bunpo</label><input type="number" required min="0" max="100" style={inputS} name="bunpo" value={raportData.bunpo} onChange={handleRaportChange} /></div>
-                                    <div><label style={labelS}>Dokkai</label><input type="number" required min="0" max="100" style={inputS} name="dokkai" value={raportData.dokkai} onChange={handleRaportChange} /></div>
-                                    <div><label style={labelS}>Choukai</label><input type="number" required min="0" max="100" style={inputS} name="choukai" value={raportData.choukai} onChange={handleRaportChange} /></div>
-                                    <div><label style={labelS}>Kaiwa</label><input type="number" required min="0" max="100" style={inputS} name="kaiwa" value={raportData.kaiwa} onChange={handleRaportChange} /></div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '20px', background: '#f8fafc', padding: '15px 20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
-                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>JUMLAH NILAI</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1e293b' }}>{totalAkademikModal}</div></div>
-                                    <div style={{ flex: 1 }}><div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>RATA-RATA</div><div style={{ fontSize: '1.5rem', fontWeight: 900, color: brandNavy }}>{rataRataRaportModal}</div></div>
-                                </div>
-
-                                {/* SEGMEN 3: NILAI SIKAP / KARAKTER */}
-                                <h4 style={sectionTitle}><Activity size={18}/> Nilai Sikap & Kepribadian</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
-                                    <div><label style={labelS}>Kecerdasan</label><select style={inputS} name="kecerdasan" value={raportData.kecerdasan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Kedisiplinan</label><select style={inputS} name="kedisiplinan" value={raportData.kedisiplinan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Kerapihan</label><select style={inputS} name="kerapihan" value={raportData.kerapihan} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Perilaku / Dewasa</label><select style={inputS} name="perilaku" value={raportData.perilaku} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Kepribadian</label><select style={inputS} name="kepribadian" value={raportData.kepribadian} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Team Work</label><select style={inputS} name="teamwork" value={raportData.teamwork} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Inisiatif</label><select style={inputS} name="inisiatif" value={raportData.inisiatif} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                    <div><label style={labelS}>Ketahanan Fisik</label><select style={inputS} name="fisik" value={raportData.fisik} onChange={handleRaportChange}><option value="A">A</option><option value="B">B</option><option value="B-">B-</option><option value="C">C</option><option value="D">D</option></select></div>
-                                </div>
-                            </div>
-                            <div style={{ position: 'sticky', bottom: '-30px', background: 'white', padding: '15px 0 0 0', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                <button type="button" onClick={() => setIsRaportOpen(false)} style={{ padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 700, borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
-                                <button type="submit" disabled={isSubmitting} style={{ padding: '10px 25px', background: brandNavy, border: 'none', color: 'white', fontWeight: 800, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><Save size={18}/> Simpan Raport</button>
-                            </div>
-                        </form>
-                    </div>
-                )}
             </main>
         </div>
     );
 }
-
-// ── STYLE OBJECTS ──
-const activeMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: '#eff6ff', color: brandNavy, border: 'none', borderRadius: '10px', fontWeight: 800, width: '100%', textAlign: 'left', cursor: 'pointer' };
-const inactiveMenuS = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: 'transparent', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: 700, width: '100%', textAlign: 'left', cursor: 'pointer', transition: '0.2s' };
-const thS = { padding: '15px 20px', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' };
-const tdS = { padding: '15px 20px', fontSize: '0.9rem', verticalAlign: 'middle' };
-const btnA = (c) => ({ background: 'white', border: `1px solid ${c}40`, color: c, padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' });
-const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' };
-const modalContent = { background: 'white', padding: '30px', borderRadius: '15px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
-const labelS = { display: 'block', fontSize: '0.75rem', fontWeight: 800, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' };
-const inputS = { width: '100%', padding: '12px 15px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem', background: '#f8fafc' };
-const sectionTitle = { fontSize: '0.9rem', color: '#3b82f6', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', marginTop: '20px' };
