@@ -6,10 +6,13 @@ export default function NotificationAlert() {
     const [notifications, setNotifications] = useState([]);
     const [userId, setUserId] = useState(null);
 
-    // 1. Inisialisasi User saat komponen dimuat
+    // 1. Inisialisasi User saat komponen dimuat (Sudah menggunakan getSession)
     useEffect(() => {
         const initUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            // ✅ MENGGUNAKAN getSession UNTUK MENCEGAH ERROR "LOCK STOLEN"
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+            
             if (user) {
                 setUserId(user.id);
                 fetchNotifications(user.id);

@@ -50,7 +50,10 @@ export default function DashboardReguler() {
         const initData = async () => {
             setIsLoading(true);
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                // ✅ PERBAIKAN: Menggunakan getSession() untuk mencegah error "Lock was stolen"
+                const { data: { session } } = await supabase.auth.getSession();
+                const user = session?.user;
+                
                 if (user) {
                     const profile = await regulerService.getUserProfile(user.id);
                     if(profile) { setUserProfile(profile); setMyPoints(profile.poin_pendaftaran || 0); }
@@ -86,9 +89,12 @@ export default function DashboardReguler() {
     const handleLogActivity = async (actionDesc) => {
         if (!userProfile) return;
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            const newPoint = await regulerService.logActivityAndAddPoint(user.id, myPoints, actionDesc);
-            setMyPoints(newPoint);
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+            if (user) {
+                const newPoint = await regulerService.logActivityAndAddPoint(user.id, myPoints, actionDesc);
+                setMyPoints(newPoint);
+            }
         } catch (err) { console.error(err); }
     };
 
