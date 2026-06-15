@@ -25,6 +25,7 @@ import DashboardReguler from './pages/Reguler/DashboardReguler';
 import DashboardDokumen from './pages/Dokumen/DashboardDokumen';
 import DashboardPendidikan from './pages/Pendidikan/DashboardPendidikan';
 import DashboardAdministrasi from './pages/Administrasi/DashboardAdministrasi';
+import TimelinePage from './pages/TimelinePage';
 
 // ── IMPORT KOMPONEN SUPERVISOR, DIREKTUR, & SUPER ADMIN ──
 import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
@@ -132,7 +133,7 @@ function AppContent() {
   useEffect(() => { fetchNews(); }, [location.pathname, fetchNews]);
 
   // Daftar rute sistem (navbar dinonaktifkan di sini) 
-  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/master-kumiai', '/master-kaisha', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-kwitansi-siswa', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra'].some(route => location.pathname.startsWith(route));
+  const isSystemRoute = ['/reguler', '/administrasi', '/dokumen', '/pendidikan', '/supervisor', '/direktur', '/superadmin', '/master-kumiai', '/master-kaisha', '/alumni', '/print-cv', '/print-laporan-kaisha', '/print-invoice-detail', '/print-invoice-summary', '/print-kwitansi-siswa', '/print-shoushiki', '/print-sertifikat', '/login', '/ubah-password', '/mitra', '/timeline'].some(route => location.pathname.startsWith(route));
 
   if (isAuthLoading && isSystemRoute && location.pathname !== '/login' && location.pathname !== '/ubah-password') {
     return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc', color: '#101869', fontWeight: 800 }}>Memeriksa Akses...</div>;
@@ -171,6 +172,9 @@ function AppContent() {
           <Route path="/administrasi/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['ADMINISTRASI', 'DIREKTUR', 'SUPERVISOR']}><DashboardAdministrasi /></ProtectedRoute>} />
           <Route path="/dokumen/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['DOKUMEN', 'DIREKTUR', 'SUPERVISOR']}><DashboardDokumen /></ProtectedRoute>} />
           <Route path="/pendidikan/dashboard" element={<ProtectedRoute userRole={userRole} allowedRoles={['PENDIDIKAN', 'DIREKTUR', 'SUPERVISOR']}><DashboardPendidikan /></ProtectedRoute>} />
+          
+          {/* ── RUTE TIMELINE ERP ── */}
+          <Route path="/timeline" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPER ADMIN', 'REGULER', 'SUPERVISOR', 'DIREKTUR', 'ADMINISTRASI', 'DOKUMEN', 'PENDIDIKAN']}><TimelinePage /></ProtectedRoute>} />
           
           {/* ── RUTE SUPERVISOR & DIREKTUR (DIPISAH) ── */}
           <Route path="/supervisor/rekrutmen" element={<ProtectedRoute userRole={userRole} allowedRoles={['SUPERVISOR', 'DIREKTUR']}><DashboardSupervisor /></ProtectedRoute>} />

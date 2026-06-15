@@ -5,7 +5,7 @@ import { regulerService } from '../../services/regulerService';
 import { 
     UserCircle, Users, Briefcase, Target, 
     Building2, Activity, GraduationCap, PhoneOutgoing, FileCheck, PieChart,
-    Search, Award, Loader2
+    Search, Award, Loader2, Calendar
 } from 'lucide-react';
 
 // COMPONENTS
@@ -147,6 +147,7 @@ export default function DashboardReguler() {
                     
                     <div style={styles.sidebarLabel}>LAPORAN & EVALUASI</div>
                     <button onClick={() => setActiveTab('EVALUASI_MITRA')} style={activeTab === 'EVALUASI_MITRA' ? styles.activeMenuS : styles.inactiveMenuS}><PieChart size={18} /> Evaluasi Mitra</button>
+                    <button onClick={() => navigate('/timeline')} style={styles.inactiveMenuS}><Calendar size={18} /> Timeline Global</button>
                 </nav>
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '15px' }}>

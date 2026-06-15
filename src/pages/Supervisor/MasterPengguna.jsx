@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supervisorService } from '../../services/supervisorService';
 import { Search, Plus, MoreVertical, Edit, Trash2, X, LayoutGrid, List, Key, Loader2 } from 'lucide-react'; 
+import { supabase } from '../../lib/supabase';
 
 // IMPORT STYLES SENTRAL
 import { styles, brandNavy, viewBtnS } from '../Reguler/components/dashboardStyles';
@@ -14,6 +15,7 @@ export default function MasterPengguna() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const dropdownRef = useRef(null);
+    const [roles, setRoles] = useState([]);
 
     const [formData, setFormData] = useState({
         id_karyawan: '', nama_lengkap: '', email_pribadi: '', no_hp: '', role_id: '', alamat: '', status: 'Aktif'
@@ -21,6 +23,7 @@ export default function MasterPengguna() {
 
     useEffect(() => {
         fetchData();
+        fetchRoles();
         const handleClickOutside = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setActiveDropdown(null); };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -35,6 +38,15 @@ export default function MasterPengguna() {
             console.error(error); 
         } finally { 
             setIsLoading(false); 
+        }
+    };
+
+    const fetchRoles = async () => {
+        try {
+            const { data } = await supabase.from('master_role').select('id, nama_role').order('nama_role');
+            if (data) setRoles(data);
+        } catch (error) {
+            console.error("Gagal memuat daftar role:", error);
         }
     };
 
@@ -239,8 +251,13 @@ export default function MasterPengguna() {
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px' }}>
                                 <div>
-                                    <label style={styles.lb}>ID Jabatan (Role) *</label>
-                                    <input type="text" name="role_id" placeholder="Masukkan ID Role" value={formData.role_id} onChange={(e) => setFormData({...formData, role_id: e.target.value})} required style={styles.inp} />
+                                    <label style={styles.lb}>Jabatan (Role) *</label>
+                                    <select name="role_id" value={formData.role_id} onChange={(e) => setFormData({...formData, role_id: e.target.value})} required style={styles.inp}>
+                                        <option value="">-- Pilih Jabatan / Role --</option>
+                                        {roles.map(r => (
+                                            <option key={r.id} value={r.id}>{r.nama_role?.toUpperCase()}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div>
                                     <label style={styles.lb}>Status Karyawan</label>

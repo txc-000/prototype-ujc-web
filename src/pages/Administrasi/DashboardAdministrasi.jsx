@@ -1,22 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
-    Wallet, Building2, Search, Loader2, UserCircle, Plus, X, 
-    Receipt, AlertOctagon, PlaneTakeoff, ShieldAlert, CheckCircle2, 
-    BellRing, Layers, CalendarDays, Edit, Save, Trash2, ArrowDownCircle
+    Wallet, Building2, Search, Loader2, UserCircle, Plus, 
+    Receipt, AlertOctagon, PlaneTakeoff, BellRing, Layers, Calendar
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 // IMPORT STYLES SENTRAL
 import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
 
-// IMPORT KOMPONEN TABS YANG SUDAH DIPISAH
+// IMPORT KOMPONEN TABS & MODALS
 import TabDashboard from './tabs/TabDashboard';
 import TabPrioritas from './tabs/TabPrioritas';
 import TabTagihan from './tabs/TabTagihan';
 import TabAlumni from './tabs/TabAlumni';
 import TabInvoice from './tabs/TabInvoice';
 import TabBukuKas from './tabs/TabBukuKas';
+import ModalInvoiceBuilder from './tabs/ModalInvoiceBuilder';
+import ModalPembayaranSiswa from './tabs/ModalPembayaranSiswa';
+import ModalViewInvoice from './tabs/ModalViewInvoice';
+import ModalCatatKas from './tabs/ModalCatatKas'; // ✅ INI YANG KELUPAAN DI-IMPORT TUAN
 
 const PAYMENT_STAGES = [
     { id: 'TAHAP_3', label: 'Pendidikan Reguler', amount: 5000000, isCicilan: true },
@@ -29,8 +32,6 @@ const OPSI_PEMBAYARAN = [
     { id: 'BAYAR_DIMUKA_1_TAHUN', label: 'Dibayar Di Muka (1 Tahun)' },
     { id: 'BAYAR_SAAT_PULANG', label: 'Dibayar Saat Pulang (Potong Jaminan)' }
 ];
-
-const SATUAN_WAKTU = ['Bulan', 'Minggu', 'Hari', 'Lumpsum'];
 
 export default function DashboardAdministrasi() {
     const navigate = useNavigate();
@@ -420,6 +421,7 @@ export default function DashboardAdministrasi() {
 
                     <div style={styles.sidebarLabel}>AUDIT & PEMBUKUAN</div>
                     <button onClick={() => setActiveTab('BUKU_KAS')} style={activeTab === 'BUKU_KAS' ? styles.activeMenuS : styles.inactiveMenuS}><Receipt size={18} /> Buku Kas & Arus Kas</button>
+                    <button onClick={() => navigate('/timeline')} style={styles.inactiveMenuS}><Calendar size={18} /> Timeline Global</button>
                 </nav>
 
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -481,365 +483,63 @@ export default function DashboardAdministrasi() {
                 )}
 
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-                    {/* Render Komponen Tab Secara Dinamis */}
                     {activeTab === 'DASHBOARD' && <TabDashboard dashFilterProgram={dashFilterProgram} setDashFilterProgram={setDashFilterProgram} uniqueDashProgram={uniqueDashProgram} dashFilterPerusahaan={dashFilterPerusahaan} setDashFilterPerusahaan={setDashFilterPerusahaan} uniqueDashPerusahaan={uniqueDashPerusahaan} filteredAlumniDash={filteredAlumniDash} formatTanggal={formatTanggal} getPeriodeString={getPeriodeString} />}
-                    
                     {activeTab === 'PRIORITAS' && <TabPrioritas urgentInvoices={urgentInvoices} updateInvoiceStatus={updateInvoiceStatus} problematicAlumni={problematicAlumni} unconfirmedAlumni={unconfirmedAlumni} totalKerugianYen={totalKerugianYen} />}
-                    
                     {activeTab === 'TAGIHAN_SISWA' && <TabTagihan filteredStudentsTagihan={filteredStudentsTagihan} openPaymentModal={openPaymentModal} />}
-                    
                     {activeTab === 'ALUMNI_TRACKING' && <TabAlumni filteredAlumniTracking={filteredAlumniTracking} formatTanggal={formatTanggal} updateStatusAlumni={updateStatusAlumni} />}
-                    
                     {activeTab === 'INVOICE_KUMIAI' && <TabInvoice invoices={invoices} searchTerm={searchTerm} updateInvoiceStatus={updateInvoiceStatus} setViewInvoice={setViewInvoice} />}
-                    
                     {activeTab === 'BUKU_KAS' && <TabBukuKas totalMasuk={totalMasuk} totalKeluar={totalKeluar} saldoAkhir={saldoAkhir} transactions={transactions} />}
                 </div>
 
-                {/* ── MODAL PEMBAYARAN SISWA (B2C) ── */}
-                {isPayModalOpen && selectedStudent && (
-                    <div style={styles.modalOverlay}>
-                        <div style={{...styles.modalContent, width: '700px', maxWidth: '95vw', padding: 0, overflow: 'hidden'}}>
-                            <div style={{ background: brandNavy, padding: '25px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' }}>
-                                <div>
-                                    <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1.4rem' }}>Kasir Pembayaran Tagihan</h3>
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', opacity: 0.9 }}>Siswa: {selectedStudent.nama_lengkap} ({selectedStudent.isMitra ? 'Mitra' : 'Reguler'})</p>
-                                </div>
-                                <button type="button" onClick={() => setIsPayModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={24} /></button>
-                            </div>
+                <ModalPembayaranSiswa 
+                    isPayModalOpen={isPayModalOpen}
+                    setIsPayModalOpen={setIsPayModalOpen}
+                    selectedStudent={selectedStudent}
+                    payForm={payForm}
+                    setPayForm={setPayForm}
+                    PAYMENT_STAGES={PAYMENT_STAGES}
+                    handleKategoriChange={handleKategoriChange}
+                    handlePaymentSubmit={handlePaymentSubmit}
+                    isSubmitting={isSubmitting}
+                    payments={payments}
+                />
 
-                            <div style={{ padding: '30px', maxHeight: '75vh', overflowY: 'auto' }}>
-                                {/* INFO KARTU TAGIHAN */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '25px' }}>
-                                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '15px', borderRadius: '10px' }}>
-                                        <div style={{ fontSize: '0.8rem', color: '#991b1b', fontWeight: 800 }}>SISA TUNGGAKAN</div>
-                                        <div style={{ fontSize: '1.6rem', color: '#ef4444', fontWeight: 900 }}>Rp {selectedStudent.sisa_tagihan.toLocaleString('id-ID')}</div>
-                                    </div>
-                                    <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '15px', borderRadius: '10px' }}>
-                                        <div style={{ fontSize: '0.8rem', color: '#065f46', fontWeight: 800 }}>TOTAL TERBAYAR</div>
-                                        <div style={{ fontSize: '1.6rem', color: '#10b981', fontWeight: 900 }}>Rp {selectedStudent.total_terbayar.toLocaleString('id-ID')}</div>
-                                    </div>
-                                </div>
+                <ModalInvoiceBuilder 
+                    isInvoiceModalOpen={isInvoiceModalOpen}
+                    setIsInvoiceModalOpen={setIsInvoiceModalOpen}
+                    invoiceForm={invoiceForm}
+                    handleSelectKumiaiForInvoice={handleSelectKumiaiForInvoice}
+                    masterKumiai={masterKumiai}
+                    activeInvoiceId={activeInvoiceId}
+                    activeInvoiceNo={activeInvoiceNo}
+                    OPSI_PEMBAYARAN={OPSI_PEMBAYARAN}
+                    setInvoiceForm={setInvoiceForm}
+                    formAddStudent={formAddStudent}
+                    setFormAddStudent={setFormAddStudent}
+                    uniqueKaishaForKumiai={uniqueKaishaForKumiai}
+                    availableStudentsForKaisha={availableStudentsForKaisha}
+                    handleAddStudentToDraft={handleAddStudentToDraft}
+                    invoiceDraft={invoiceDraft}
+                    updateDraftItem={updateDraftItem}
+                    removeDraftItem={removeDraftItem}
+                    handleSaveInvoice={handleSaveInvoice}
+                    isSubmitting={isSubmitting}
+                />
 
-                                {/* FORM INPUT PEMBAYARAN */}
-                                <form onSubmit={handlePaymentSubmit} style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
-                                    <h4 style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>Input Pembayaran Baru</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                        <div>
-                                            <label style={styles.lb}>Kategori Tagihan</label>
-                                            <select required style={styles.inp} value={payForm.kategori} onChange={handleKategoriChange}>
-                                                <option value="">-- Pilih Jenis --</option>
-                                                {PAYMENT_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                                <option value="LAINNYA">Lainnya / Cicilan Custom</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style={styles.lb}>Nominal (Rp)</label>
-                                            <input type="number" required min="1000" style={styles.inp} value={payForm.nominal} onChange={(e) => setPayForm({...payForm, nominal: e.target.value})} placeholder="Contoh: 1000000" />
-                                        </div>
-                                        <div>
-                                            <label style={styles.lb}>Metode Pembayaran</label>
-                                            <select required style={styles.inp} value={payForm.metode_pembayaran} onChange={(e) => setPayForm({...payForm, metode_pembayaran: e.target.value})}>
-                                                <option value="TRANSFER">Transfer Bank</option>
-                                                <option value="CASH">Tunai (Cash)</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style={styles.lb}>Keterangan Tambahan</label>
-                                            <input type="text" style={styles.inp} value={payForm.keterangan} onChange={(e) => setPayForm({...payForm, keterangan: e.target.value})} placeholder="Opsional..." />
-                                        </div>
-                                    </div>
-                                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-                                        <button type="submit" disabled={isSubmitting} style={{...styles.btnPrimary, background: '#10b981', padding: '12px 25px', fontSize: '1rem' }}>
-                                            {isSubmitting ? <Loader2 className="animate-spin" /> : <><Wallet size={20}/> Catat & Masukkan Buku Kas</>}
-                                        </button>
-                                    </div>
-                                </form>
+                <ModalViewInvoice 
+                    viewInvoice={viewInvoice}
+                    setViewInvoice={setViewInvoice}
+                />
 
-                                {/* HISTORI PEMBAYARAN */}
-                                <h4 style={{ color: '#1e293b', margin: '0 0 10px 0' }}>Histori Pembayaran Siswa</h4>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                    <thead style={{ background: '#f1f5f9' }}>
-                                        <tr>
-                                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Tanggal</th>
-                                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Nominal</th>
-                                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1' }}>Keterangan</th>
-                                            <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #cbd5e1' }}>Metode</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {payments.length === 0 ? (
-                                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>Belum ada histori pembayaran.</td></tr>
-                                        ) : payments.map(p => (
-                                            <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={{ padding: '10px', color: '#475569' }}>{new Date(p.tanggal_bayar || p.created_at).toLocaleDateString('id-ID')}</td>
-                                                <td style={{ padding: '10px', fontWeight: 800, color: '#10b981' }}>Rp {Number(p.nominal).toLocaleString('id-ID')}</td>
-                                                <td style={{ padding: '10px', color: '#334155' }}>{p.keterangan}</td>
-                                                <td style={{ padding: '10px', textAlign: 'center' }}>
-                                                    <span style={{ padding: '2px 8px', borderRadius: '4px', background: p.metode_pembayaran === 'CASH' ? '#fef3c7' : '#e0e7ff', color: p.metode_pembayaran === 'CASH' ? '#b45309' : '#3730a3', fontWeight: 700, fontSize: '0.75rem' }}>{p.metode_pembayaran}</span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* MODAL INVOICE BUILDER (TETAP DI PARENT KARENA BANYAK STATE COMPLEX) */}
-                {isInvoiceModalOpen && (
-                    <div style={styles.modalOverlay}>
-                        <div style={{...styles.modalContent, width: '1000px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', maxHeight: '95vh', padding: '30px', overflow: 'hidden'}}>
-                            <div style={styles.modalHeader}>
-                                <div>
-                                    <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1.4rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <Layers size={22} color={brandNavy}/> Builder & Update Invoice
-                                    </h3>
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Pilih Kumiai, tambahkan siswa (anti duplikat).</p>
-                                </div>
-                                <button type="button" onClick={() => setIsInvoiceModalOpen(false)} style={styles.closeBtn}><X size={20} color="#64748b" /></button>
-                            </div>
-
-                            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '10px' }}>
-                                {/* KOTAK 1: KONTROL INVOICE */}
-                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: brandNavy, fontWeight: 900, textTransform: 'uppercase' }}>1. Pilih Target Kumiai</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '15px' }}>
-                                        <div>
-                                            <select required style={{...styles.inp, border: '2px solid #3b82f6', fontWeight: 800, color: '#1d4ed8', cursor: 'pointer'}} value={invoiceForm.kumiai} onChange={(e) => handleSelectKumiaiForInvoice(e.target.value)}>
-                                                <option value="">-- Pilih Kumiai --</option>
-                                                {masterKumiai.map((k, i) => {
-                                                    const namaKumiai = k.nama_kumiai || k.kumiai || k.nama || k.name || k.nama_perusahaan || Object.values(k)[1] || `Kumiai (${k.id})`;
-                                                    return <option key={i} value={namaKumiai}>{namaKumiai}</option>;
-                                                })}
-                                            </select>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                                            {activeInvoiceId ? (
-                                                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', padding: '10px 15px', borderRadius: '8px', color: '#b45309', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                                                    <Edit size={16}/> Mengedit Nota: <b>{activeInvoiceNo}</b>
-                                                </div>
-                                            ) : invoiceForm.kumiai ? (
-                                                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px 15px', borderRadius: '8px', color: '#047857', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                                                    <CheckCircle2 size={16}/> Membuat Nota Baru.
-                                                </div>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                    {invoiceForm.kumiai && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '15px', borderTop: '1px dashed #cbd5e1', paddingTop: '15px' }}>
-                                            <div>
-                                                <label style={{...styles.lb, color: '#3730a3'}}>Periode Tagihan</label>
-                                                <div style={{ ...styles.inp, background: '#f1f5f9', color: brandNavy, fontWeight: 900, cursor: 'not-allowed' }}>
-                                                    {activeInvoiceId ? invoiceForm.periode : `Bulan ${new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' })}`}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label style={styles.lb}>Opsi Termin Pembayaran</label>
-                                                <select required style={{...styles.inp, cursor: 'pointer'}} value={invoiceForm.opsi_pembayaran} onChange={(e) => setInvoiceForm({...invoiceForm, opsi_pembayaran: e.target.value})}>
-                                                    {OPSI_PEMBAYARAN.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* KOTAK 2: TAMBAH SISWA KE NOTA */}
-                                {invoiceForm.kumiai && (
-                                    <div style={{ background: 'white', padding: '15px', borderRadius: '12px', border: '2px dashed #94a3b8', marginBottom: '20px' }}>
-                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#475569', fontWeight: 900, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={16}/> 2. Tambah Siswa / Item ke Tagihan</h4>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
-                                            <div>
-                                                <label style={styles.lb}>Filter Perusahaan (Kaisha)</label>
-                                                <select style={{...styles.inpSm, cursor: 'pointer'}} value={formAddStudent.kaisha} onChange={(e) => setFormAddStudent({ kaisha: e.target.value, student_id: '' })}>
-                                                    <option value="">-- Pilih Kaisha --</option>
-                                                    {uniqueKaishaForKumiai.map((p, i) => <option key={i} value={p}>{p}</option>)}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label style={styles.lb}>Siswa (Belum Dimasukkan)</label>
-                                                <select style={{...styles.inpSm, cursor: 'pointer'}} value={formAddStudent.student_id} onChange={(e) => setFormAddStudent({...formAddStudent, student_id: e.target.value})} disabled={!formAddStudent.kaisha || availableStudentsForKaisha.length === 0}>
-                                                    <option value="">-- Pilih Siswa --</option>
-                                                    {availableStudentsForKaisha.map(s => <option key={s.id} value={s.id}>{s.nama_lengkap}</option>)}
-                                                </select>
-                                            </div>
-                                            <button type="button" onClick={handleAddStudentToDraft} disabled={!formAddStudent.student_id} style={{ padding: '10px 15px', background: formAddStudent.student_id ? '#10b981' : '#e2e8f0', color: formAddStudent.student_id ? 'white' : '#94a3b8', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: formAddStudent.student_id ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                Tambahkan ke Nota <ArrowDownCircle size={16}/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TABEL DRAFT INVOICE */}
-                                {invoiceDraft.length > 0 && (
-                                    <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                            <thead style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-                                                <tr>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'left', color: '#475569', fontWeight: 800 }}>Nama Siswa / Item</th>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'left', color: '#475569', fontWeight: 800, width: '180px' }}>Keterangan Teks</th>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'left', color: '#475569', fontWeight: 800, width: '130px' }}>Nominal (¥)</th>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'left', color: '#475569', fontWeight: 800, width: '160px' }}>Satuan (Qty & Unit)</th>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'right', color: '#475569', fontWeight: 800 }}>Subtotal</th>
-                                                    <th style={{ padding: '10px 15px', textAlign: 'center', color: '#475569', fontWeight: 800, width: '50px' }}>Hapus</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {Object.entries(
-                                                    invoiceDraft.reduce((acc, item) => {
-                                                        if (!acc[item.perusahaan]) acc[item.perusahaan] = [];
-                                                        acc[item.perusahaan].push(item);
-                                                        return acc;
-                                                    }, {})
-                                                ).map(([perusahaan, students]) => (
-                                                    <React.Fragment key={perusahaan}>
-                                                        <tr style={{ background: perusahaan === 'TUNGGAKAN SEBELUMNYA' ? '#fffbeb' : '#e2e8f0' }}>
-                                                            <td colSpan="6" style={{ padding: '8px 10px', fontWeight: 900, color: perusahaan === 'TUNGGAKAN SEBELUMNYA' ? '#b45309' : '#1e293b' }}>
-                                                                {perusahaan === 'TUNGGAKAN SEBELUMNYA' ? <AlertOctagon size={14} style={{display:'inline', marginBottom:'-2px'}}/> : '🏢'} {perusahaan}
-                                                            </td>
-                                                        </tr>
-                                                        {students.map((item, idx) => (
-                                                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                                <td style={{ padding: '10px 15px' }}>
-                                                                    <div style={{ fontWeight: 800, color: item.student_id === 'OUTSTANDING' ? '#ef4444' : '#334155' }}>
-                                                                        {item.student_id === 'OUTSTANDING' ? item.nama_lengkap : (
-                                                                            <input type="text" style={{border:'none', background:'transparent', outline:'none', fontWeight: 800, color: '#1e293b', width: '100%'}} value={item.nama_lengkap} onChange={(e) => updateDraftItem(item.student_id, 'nama_lengkap', e.target.value)} />
-                                                                        )}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Entri: {item.no_entri || item.tanggal_entri || '-'}</div>
-                                                                </td>
-                                                                <td style={{ padding: '10px 15px' }}>
-                                                                    {item.student_id === 'OUTSTANDING' ? <span style={{fontSize:'0.75rem', color:'#ef4444', fontWeight:800}}>{item.ket_durasi}</span> : (
-                                                                        <input type="text" style={{ ...styles.inpSm, padding: '6px 8px', fontSize: '0.75rem' }} value={item.ket_durasi} onChange={(e) => updateDraftItem(item.student_id, 'ket_durasi', e.target.value)} />
-                                                                    )}
-                                                                </td>
-                                                                <td style={{ padding: '10px 15px' }}>
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                        <span style={{ fontWeight: 800, color: '#94a3b8' }}>¥</span>
-                                                                        <input type="number" style={{ ...styles.inpSm, padding: '6px 8px', width: '100%' }} value={item.nominal} onChange={(e) => updateDraftItem(item.student_id, 'nominal', e.target.value)} />
-                                                                    </div>
-                                                                </td>
-                                                                <td style={{ padding: '10px 15px' }}>
-                                                                    {item.student_id === 'OUTSTANDING' ? <div style={{textAlign:'center', fontWeight:700, color:'#64748b'}}>-</div> : (
-                                                                        <div style={{ display: 'flex', gap: '5px' }}>
-                                                                            <input type="number" min="1" style={{ ...styles.inpSm, padding: '6px', width: '50px', textAlign: 'center' }} value={item.kuantitas} onChange={(e) => updateDraftItem(item.student_id, 'kuantitas', e.target.value)} />
-                                                                            <select style={{ ...styles.inpSm, padding: '6px', cursor: 'pointer', flex: 1 }} value={item.satuan} onChange={(e) => updateDraftItem(item.student_id, 'satuan', e.target.value)}>
-                                                                                {SATUAN_WAKTU.map(s => <option key={s} value={s}>{s}</option>)}
-                                                                            </select>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                                <td style={{ padding: '10px 15px', textAlign: 'right', fontWeight: 900, color: brandNavy }}>
-                                                                    ¥ {(item.nominal * item.kuantitas).toLocaleString()}
-                                                                </td>
-                                                                <td style={{ padding: '10px 15px', textAlign: 'center' }}>
-                                                                    {item.student_id !== 'OUTSTANDING' && (
-                                                                        <button type="button" onClick={() => removeDraftItem(item.student_id)} style={styles.btnDel}>
-                                                                            <Trash2 size={14}/>
-                                                                        </button>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </React.Fragment>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* KOTAK 3: TOTAL & SIMPAN */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px 25px', borderTop: '1px solid #e2e8f0', marginTop: '20px' }}>
-                                <div>
-                                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TOTAL TAGIHAN YEN</div>
-                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: brandNavy, lineHeight: '1.2' }}>
-                                        ¥ {Math.round(invoiceDraft.reduce((sum, item) => sum + (item.nominal * item.kuantitas), 0) * 1.11).toLocaleString()}
-                                    </div>
-                                </div>
-                                <button type="button" onClick={handleSaveInvoice} disabled={isSubmitting || invoiceDraft.length === 0} style={{...styles.btnPrimary, opacity: (isSubmitting || invoiceDraft.length===0) ? 0.6 : 1}}>
-                                    {isSubmitting ? <Loader2 size={20} className="animate-spin"/> : <><Save size={20}/> {activeInvoiceId ? 'Update & Cetak Ulang Nota' : 'Simpan & Cetak Nota Baru'}</>}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* MODAL VIEW INVOICE */}
-                {viewInvoice && (
-                    <div style={styles.modalOverlay}>
-                        <div style={{...styles.modalContent, width: '800px', maxWidth: '95vw', display: 'flex', flexDirection: 'column', maxHeight: '90vh', padding: '30px'}}>
-                            <div style={styles.modalHeader}>
-                                <div>
-                                    <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1.4rem', color: brandNavy }}>Rincian Tagihan & Prediksi</h3>
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>No: {viewInvoice.invoice_no}</p>
-                                </div>
-                                <button onClick={() => setViewInvoice(null)} style={styles.closeBtn}><X size={20} color="#64748b" /></button>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Klien (Kumiai)</div>
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1e293b' }}>{viewInvoice.kumiai_name}</div>
-                                    <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 800, background: viewInvoice.status === 'PAID' ? '#dcfce7' : viewInvoice.status === 'MERGED' ? '#f3f4f6' : '#fef2f2', color: viewInvoice.status === 'PAID' ? '#166534' : viewInvoice.status === 'MERGED' ? '#475569' : '#ef4444' }}>STATUS: {viewInvoice.status}</span>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#ec4899' }}>Total: ¥{Number(viewInvoice.total_amount).toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                <div style={{ background: '#fffbeb', padding: '15px', borderRadius: '8px', border: '1px solid #fcd34d' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Periode Saat Ini</div>
-                                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#92400e', marginBottom: '10px' }}>{viewInvoice.billing_period}</div>
-                                </div>
-                            </div>
-
-                            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #cbd5e1', borderRadius: '8px' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                    <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
-                                        <tr>
-                                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', fontWeight: 800, color: '#475569' }}>Siswa (Batch/Entri)</th>
-                                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #cbd5e1', fontWeight: 800, color: '#475569' }}>Durasi Tagihan</th>
-                                            <th style={{ padding: '10px', textAlign: 'right', borderBottom: '1px solid #cbd5e1', fontWeight: 800, color: '#475569' }}>Nominal</th>
-                                            <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #cbd5e1', fontWeight: 800, color: '#475569' }}>Qty (Satuan)</th>
-                                            <th style={{ padding: '10px', textAlign: 'right', borderBottom: '1px solid #cbd5e1', fontWeight: 800, color: '#475569' }}>Subtotal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {Object.entries(
-                                            (viewInvoice.detail_tagihan || []).reduce((acc, item) => {
-                                                if (!acc[item.perusahaan]) acc[item.perusahaan] = [];
-                                                acc[item.perusahaan].push(item);
-                                                return acc;
-                                            }, {})
-                                        ).map(([perusahaan, students]) => (
-                                            <React.Fragment key={perusahaan}>
-                                                <tr style={{ background: perusahaan === 'TUNGGAKAN SEBELUMNYA' ? '#fffbeb' : '#e2e8f0' }}>
-                                                    <td colSpan="5" style={{ padding: '8px 10px', fontWeight: 900, color: perusahaan === 'TUNGGAKAN SEBELUMNYA' ? '#b45309' : '#1e293b' }}>
-                                                        {perusahaan === 'TUNGGAKAN SEBELUMNYA' ? <AlertOctagon size={14} style={{display:'inline', marginBottom:'-2px'}}/> : '🏢'} {perusahaan}
-                                                    </td>
-                                                </tr>
-                                                {students.map((item, idx) => (
-                                                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: '10px', paddingLeft: '25px' }}>
-                                                            <div style={{ fontWeight: 800, color: item.student_id === 'OUTSTANDING' ? '#ef4444' : '#334155' }}>{item.nama_lengkap}</div>
-                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Entri: {item.no_entri || item.tanggal_entri || '-'}</div>
-                                                        </td>
-                                                        <td style={{ padding: '10px' }}>
-                                                            <span style={{ fontSize: '0.75rem', padding: '2px 6px', background: item.student_id === 'OUTSTANDING' ? '#fee2e2' : '#dbeafe', color: item.student_id === 'OUTSTANDING' ? '#ef4444' : '#1e40af', fontWeight: 800, borderRadius: '4px' }}>{item.ket_durasi || '-'}</span>
-                                                        </td>
-                                                        <td style={{ padding: '10px', textAlign: 'right' }}>¥{Number(item.nominal).toLocaleString()}</td>
-                                                        <td style={{ padding: '10px', textAlign: 'center' }}>{item.kuantitas} {item.satuan}</td>
-                                                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: item.student_id === 'OUTSTANDING' ? '#ef4444' : brandNavy }}>¥{(item.nominal * item.kuantitas).toLocaleString()}</td>
-                                                    </tr>
-                                                ))}
-                                            </React.Fragment>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* ✅ INI YANG TADI KELUPAAN DIMASUKKAN TUAN */}
+                <ModalCatatKas 
+                    isCashModalOpen={isCashModalOpen}
+                    setIsCashModalOpen={setIsCashModalOpen}
+                    cashForm={cashForm}
+                    setCashForm={setCashForm}
+                    handleCashSubmit={handleCashSubmit}
+                    isSubmitting={isSubmitting}
+                />
             </main>
         </div>
     );
