@@ -5,7 +5,7 @@ import { regulerService } from '../../services/regulerService';
 import { 
     UserCircle, Users, Briefcase, Target, 
     Building2, Activity, GraduationCap, PhoneOutgoing, FileCheck, PieChart,
-    Search, Award, Loader2, Calendar
+    Search, Award, Loader2, Calendar, Mail, X
 } from 'lucide-react';
 
 // COMPONENTS
@@ -46,6 +46,11 @@ export default function DashboardReguler() {
     const [viewRaportStudent, setViewRaportStudent] = useState(null); 
     const [selectedJobOrder, setSelectedJobOrder] = useState(null);
 
+    // ── STATE KOTAK MASUK TUGAS ──
+    const [currentUserId, setCurrentUserId] = useState(null);
+    const [inboxTasks, setInboxTasks] = useState([]);
+    const [showInbox, setShowInbox] = useState(false);
+
     useEffect(() => {
         const initData = async () => {
             setIsLoading(true);
@@ -55,6 +60,8 @@ export default function DashboardReguler() {
                 const user = session?.user;
                 
                 if (user) {
+                    setCurrentUserId(user.id);
+                    fetchInbox(user.id);
                     const profile = await regulerService.getUserProfile(user.id);
                     if(profile) { setUserProfile(profile); setMyPoints(profile.poin_pendaftaran || 0); }
                 }
@@ -67,6 +74,31 @@ export default function DashboardReguler() {
         };
         initData();
     }, []);
+
+    // --- FUNGSI KOTAK MASUK ---
+    const fetchInbox = async (userId) => {
+        try {
+            const { data } = await supabase.from('timeline_discussions').select('id, sender_name, message, created_at, is_read, company_timeline(kegiatan)').eq('receiver_id', userId).eq('is_read', false).order('created_at', { ascending: false });
+            setInboxTasks(data || []);
+        } catch (e) {}
+    };
+
+    const markAsRead = async (id) => {
+        try {
+            await supabase.from('timeline_discussions').update({ is_read: true }).eq('id', id);
+            setInboxTasks(prev => prev.filter(t => t.id !== id));
+        } catch (e) {}
+    };
+
+    useEffect(() => {
+        if (!currentUserId) return;
+        const channel = supabase.channel('custom-inbox-reguler')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'timeline_discussions', filter: `receiver_id=eq.${currentUserId}` }, (payload) => {
+                fetchInbox(currentUserId);
+                alert(`🔔 TUGAS BARU DARI: ${payload.new.sender_name}\n\nPesan: ${payload.new.message}`);
+            }).subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [currentUserId]);
 
     useEffect(() => {
         const fetchStudents = async () => {
@@ -150,6 +182,10 @@ export default function DashboardReguler() {
                     <button onClick={() => navigate('/timeline')} style={styles.inactiveMenuS}><Calendar size={18} /> Timeline Global</button>
                 </nav>
                 <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                    <button onClick={() => setShowInbox(true)} style={{ width: '100%', marginBottom: '15px', background: inboxTasks.length > 0 ? '#eff6ff' : 'white', border: `1px solid ${inboxTasks.length > 0 ? '#3b82f6' : '#cbd5e1'}`, padding: '10px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: '0.2s' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: inboxTasks.length > 0 ? '#1e40af' : '#475569', fontWeight: 800 }}><Mail size={18}/> Kotak Tugas</div>
+                        {inboxTasks.length > 0 && <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 900, padding: '2px 8px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)' }}>{inboxTasks.length} Baru</span>}
+                    </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '15px' }}>
                         <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: brandNavy }}><UserCircle size={24} /></div>
                         <div style={{ overflow: 'hidden' }}><div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>{userProfile?.nama_lengkap || 'Admin'}</div><div style={{ fontSize: '0.7rem', color: '#64748b' }}>{userProfile?.master_role?.nama_role || 'Staf'}</div></div>
@@ -223,6 +259,38 @@ export default function DashboardReguler() {
                     viewRaportStudent={viewRaportStudent}
                     setViewRaportStudent={setViewRaportStudent}
                 />
+                
+                {/* MODAL KOTAK MASUK */}
+                {showInbox && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
+                        <div style={{ background: 'white', width: '100%', maxWidth: '500px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+                            <div style={{ background: '#f8fafc', padding: '20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={20} color="#3b82f6"/> Kotak Tugas & Pesan</h2>
+                                <button onClick={() => setShowInbox(false)} style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '50%', padding: '6px', cursor: 'pointer', color: '#64748b' }}><X size={18}/></button>
+                            </div>
+                            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, background: '#f1f5f9' }}>
+                                {inboxTasks.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#64748b', padding: '30px 0', fontWeight: 600 }}>Tidak ada tugas / instruksi baru untuk Anda.</div>
+                                ) : (
+                                    inboxTasks.map(t => (
+                                        <div key={t.id} style={{ background: 'white', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#3b82f6', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px' }}>Dari: {t.sender_name}</span>
+                                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>{new Date(t.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b', marginBottom: '6px' }}>Tugas: {t.company_timeline?.kegiatan || '-'}</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.5', marginBottom: '15px', padding: '10px', background: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #cbd5e1' }}>"{t.message}"</div>
+                                            <div style={{ display: 'flex', gap: '10px' }}>
+                                                <button onClick={() => markAsRead(t.id)} style={{ flex: 1, background: '#10b981', color: 'white', padding: '8px', borderRadius: '6px', border: 'none', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>Tandai Selesai Dibaca</button>
+                                                <button onClick={() => { setShowInbox(false); navigate('/timeline'); }} style={{ flex: 1, background: 'white', color: '#3b82f6', border: '1px solid #bfdbfe', padding: '8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>Lihat Timeline</button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
