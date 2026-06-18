@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
     LayoutDashboard, Activity, LogOut, ShieldCheck, FileText, 
-    ClipboardCheck, FileCheck, Send, PlaneTakeoff, Archive, Search
+    ClipboardCheck, FileCheck, Send, PlaneTakeoff, Archive, Search, X, Printer
 } from 'lucide-react';
 
 // IMPORT STYLES
@@ -19,6 +19,7 @@ import TabDokumenTable from '../Dokumen/tabs/TabDokumenTable';
 import ModalOtit from '../Dokumen/modals/ModalOtit';
 import ModalChecklist from '../Dokumen/modals/ModalChecklist';
 import ModalTerbang from '../Dokumen/modals/ModalTerbang';
+import ModalBerkas from '../Dokumen/modals/ModalBerkas';
 
 const brandYellow = '#fdfb06';
 
@@ -122,9 +123,9 @@ export default function SpvDokumenDashboard() {
 
     // ── FILTER DATA UNTUK TAB OPERASIONAL ──
     let currentTabStudents = [];
-    if (activeTab === 'PEMBERKASAN') currentTabStudents = allStudents.filter(s => ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN', 'PENGUMPULAN BERKAS'].includes(s.tahap_sekarang));
-    else if (activeTab === 'KONTRAK') currentTabStudents = allStudents.filter(s => ['TTD KONTRAK'].includes(s.tahap_sekarang));
-    else if (activeTab === 'COE_VISA') currentTabStudents = allStudents.filter(s => ['APPLY COE', 'APPLY VISA'].includes(s.tahap_sekarang));
+    if (activeTab === 'PEMBERKASAN') currentTabStudents = allStudents.filter(s => ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN', 'PENGUMPULAN BERKAS', 'PENDIDIKAN DIKLAT'].includes(s.tahap_sekarang));
+    else if (activeTab === 'KONTRAK') currentTabStudents = allStudents.filter(s => ['TTD KONTRAK', 'PENDIDIKAN DIKLAT'].includes(s.tahap_sekarang));
+    else if (activeTab === 'COE_VISA') currentTabStudents = allStudents.filter(s => ['APPLY COE', 'APPLY VISA', 'PENDIDIKAN DIKLAT'].includes(s.tahap_sekarang));
     else if (activeTab === 'KEBERANGKATAN') currentTabStudents = allStudents.filter(s => ['SIAP BERANGKAT'].includes(s.tahap_sekarang));
     else if (activeTab === 'SELESAI') currentTabStudents = allStudents.filter(s => ['ALUMNI'].includes(s.tahap_sekarang));
 
@@ -160,11 +161,11 @@ export default function SpvDokumenDashboard() {
                         activeTab={activeTab} isLoading={isLoading} filtered={operasionalFiltered} docItems={docItems}
                         openChecklistModal={(s) => openModal('CHECKLIST', s)} openOtitModal={(s) => openModal('OTIT', s)}
                         initModalTerbang={initModalTerbang} handleUpdateStage={handleUpdateStage}
-                        openBerkasDigital={() => alert("Fitur Berkas Digital dikelola di Tab lain untuk efisiensi.")} 
-                        openPrintMenu={() => alert("Fitur Cetak sedang dalam perbaikan.")}
+                    openBerkasDigital={(s) => openModal('BERKAS', s)} 
+                    openPrintMenu={(s) => openModal('PRINT', s)}
                     />
-                </div>
-            );
+            </div>
+        );
         }
     };
 
@@ -220,6 +221,39 @@ export default function SpvDokumenDashboard() {
             {activeModal === 'OTIT' && <ModalOtit student={selectedStudent} masterMitra={masterMitra} masterKaisha={masterKaisha} masterKumiai={masterKumiai} masterBidang={masterBidang} onClose={closeModal} onSuccess={() => { closeModal(); fetchAllData(); }} />}
             {activeModal === 'CHECKLIST' && <ModalChecklist student={selectedStudent} docItems={docItems} onClose={closeModal} onSuccess={() => { closeModal(); fetchAllData(); }} logActivity={logActivity} />}
             {activeModal === 'TERBANG' && <ModalTerbang student={selectedStudent} onClose={closeModal} onSuccess={() => { closeModal(); fetchAllData(); }} logActivity={logActivity} incrementPoint={() => {}} />}
+
+            {activeModal === 'PRINT' && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'white', width: '100%', maxWidth: '400px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                        <div style={{ padding: '20px', background: brandNavy, color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Printer size={18} /> Menu Cetak Dokumen</h3>
+                            <button onClick={closeModal} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={20}/></button>
+                        </div>
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button onClick={() => window.open(`/print-cv/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Rirekisho (CV)</button>
+                            <button onClick={() => window.open(`/print-shoushiki-10/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Shoushiki 1-10</button>
+                            <button onClick={() => window.open(`/print-shoushiki-20/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Shoushiki 1-20</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeModal === 'BERKAS' && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'white', width: '100%', maxWidth: '400px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                        <div style={{ padding: '20px', background: '#f59e0b', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={18} /> Berkas Digital Scan</h3>
+                            <button onClick={closeModal} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={20}/></button>
+                        </div>
+                        <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                            <FileText size={48} color="#cbd5e1" style={{ marginBottom: '15px', margin: '0 auto' }} />
+                            <h4 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>{selectedStudent?.nama_lengkap}</h4>
+                            <p style={{ margin: 0, fontSize: '0.9rem' }}>Fitur pengunggahan ke cloud Supabase Storage (File Paspor, KTP, dll) akan diaktifkan di tahap final.</p>
+                            <button onClick={closeModal} style={{ marginTop: '20px', padding: '10px 20px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Tutup Info</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

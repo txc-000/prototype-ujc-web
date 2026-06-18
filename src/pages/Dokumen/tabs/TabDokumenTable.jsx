@@ -56,9 +56,8 @@ export default function TabDokumenTable({
                                 <td style={{...styles.tdStyle, textAlign: 'center'}}>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
                                         
-                                        {/* TOMBOL BACA/CEK */}
-                                        <button onClick={() => openBerkasDigital(s)} style={actionBtn('#f59e0b')} title="Lihat Berkas Digital Scan"><Eye size={18}/></button>
-                                        <button onClick={() => openChecklistModal(s)} style={actionBtn('#3b82f6')} title="Checklist Fisik"><ClipboardCheck size={18}/></button>
+                                        {/* TOMBOL MANAJEMEN DOKUMEN TERPADU */}
+                                        <button onClick={() => openBerkasDigital(s)} style={{...actionBtn('#3b82f6'), background: '#eff6ff'}} title="Kelola Kelengkapan Berkas Fisik & Scan"><ClipboardCheck size={18} color="#2563eb"/></button>
                                         
                                         {/* TOMBOL FORMULIR OTIT */}
                                         <button onClick={() => openOtitModal(s)} style={{...actionBtn('#10b981'), background: '#ecfdf5'}} title="Form OTIT, Pendidikan & Identitas">
@@ -79,8 +78,11 @@ export default function TabDokumenTable({
                                             <button onClick={() => handleUpdateStage(s.id, s.nama_lengkap, 'APPLY COE')} style={{...styles.btnPrimary, padding: '8px 12px', fontSize: '0.8rem'}}>Maju Apply CoE</button>
                                         )}
                                         
-                                        {activeTab === 'COE_VISA' && (
-                                            <button onClick={() => handleUpdateStage(s.id, s.nama_lengkap, 'SIAP BERANGKAT')} style={{...styles.btnPrimary, padding: '8px 12px', fontSize: '0.8rem'}}>Visa Terbit (Siap Terbang)</button>
+                                        {activeTab === 'COE_VISA' && s.tahap_sekarang !== 'APPLY VISA' && (
+                                            <button onClick={() => handleUpdateStage(s.id, s.nama_lengkap, 'APPLY VISA')} style={{...styles.btnPrimary, padding: '8px 12px', fontSize: '0.8rem', background: '#3b82f6'}}>CoE Turun (Apply Visa)</button>
+                                        )}
+                                        {activeTab === 'COE_VISA' && s.tahap_sekarang === 'APPLY VISA' && (
+                                            <button onClick={() => handleUpdateStage(s.id, s.nama_lengkap, 'SIAP BERANGKAT')} style={{...styles.btnPrimary, padding: '8px 12px', fontSize: '0.8rem', background: '#10b981'}}>Visa Terbit (Siap Terbang)</button>
                                         )}
                                         
                                         {activeTab === 'KEBERANGKATAN' && (

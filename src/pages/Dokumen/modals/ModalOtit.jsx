@@ -82,7 +82,7 @@ export default function ModalOtit({ student, masterMitra, masterKaisha, masterKu
 
     return (
         <div style={styles.modalOverlay}>
-            <form onSubmit={saveOtitForm} style={{...styles.modalContent, width: '1000px', maxHeight: '90vh', padding: 0}}>
+            <form onSubmit={saveOtitForm} style={{...styles.modalContent, width: '1000px', maxHeight: '90vh', padding: 0, display: 'flex', flexDirection: 'column'}}>
                 <div style={{...styles.modalHeader, padding: '25px', position: 'sticky', top: 0, zIndex: 10, background: 'white'}}>
                     <div>
                         <h3 style={{ margin: 0, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -93,7 +93,7 @@ export default function ModalOtit({ student, masterMitra, masterKaisha, masterKu
                     <button type="button" onClick={onClose} style={styles.closeBtn}><X size={20} /></button>
                 </div>
                 
-                <div style={{ padding: '25px', overflowY: 'auto' }}>
+                <div style={{ padding: '25px', overflowY: 'auto', flex: 1 }}>
                     <h4 style={styles.sectionTitle}><UserCog size={18}/> Identitas Dasar</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '30px', background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                         <div><label style={styles.lb}>NIK</label><input required style={styles.inp} name="nik" value={otitData.nik} onChange={handleOtitChange} /></div>
@@ -144,7 +144,7 @@ export default function ModalOtit({ student, masterMitra, masterKaisha, masterKu
                         <div><label style={styles.lb}>Perusahaan Penerima</label><select style={styles.inp} name="perusahaan_penerima" value={otitData.perusahaan_penerima} onChange={handleOtitChange}><option value="">-- Pilih Kaisha --</option>{masterKaisha.map(k => <option key={k.id} value={k.nama_perusahaan || k.nama_kaisha}>{k.nama_perusahaan || k.nama_kaisha}</option>)}</select></div>
                         <div><label style={styles.lb}>Perusahaan Haken</label><select style={styles.inp} name="perusahaan_haken" value={otitData.perusahaan_haken} onChange={handleOtitChange}><option value="">-- Tidak Ada --</option>{masterKaisha.map(k => <option key={k.id} value={k.nama_perusahaan || k.nama_kaisha}>{k.nama_perusahaan || k.nama_kaisha}</option>)}</select></div>
                         <div style={{ display: 'flex', gap: '10px' }}>
-                            <div style={{flex: 1}}><label style={styles.lb}>Kel. Pekerjaan</label><select style={styles.inp} name="kelompok_pekerjaan" value={otitData.kelompok_pekerjaan} onChange={handleOtitChange}><option value="">-- Pilih Bidang --</option>{masterBidang.map(b => <option key={b.id} value={b.nama_bidang}>{b.nama_bidang}</option>)}</select></div>
+                            <div style={{flex: 1}}><label style={styles.lb}>Kel. Pekerjaan</label><select style={styles.inp} name="kelompok_pekerjaan" value={otitData.kelompok_pekerjaan} onChange={handleOtitChange}><option value="">-- Pilih Bidang --</option>{masterBidang.map(b => <option key={b.nama_bidang} value={b.nama_bidang}>{b.nama_bidang}</option>)}</select></div>
                             <div style={{flex: 1}}><label style={styles.lb}>Sub Kelompok</label><input style={styles.inp} name="sub_kelompok_pekerjaan" value={otitData.sub_kelompok_pekerjaan} onChange={handleOtitChange} /></div>
                         </div>
                     </div>

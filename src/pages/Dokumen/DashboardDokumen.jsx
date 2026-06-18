@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { FileCheck, ClipboardCheck, PlaneTakeoff, Send, Search, UserCircle, Award, Archive } from 'lucide-react';
+import { FileCheck, ClipboardCheck, PlaneTakeoff, Send, Search, UserCircle, Award, Archive, X, Printer, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { styles, brandNavy } from '../Reguler/components/dashboardStyles';
@@ -10,6 +10,7 @@ import TabDokumenTable from './tabs/TabDokumenTable';
 import ModalOtit from './modals/ModalOtit';
 import ModalChecklist from './modals/ModalChecklist';
 import ModalTerbang from './modals/ModalTerbang';
+import ModalBerkas from './modals/ModalBerkas';
 
 export default function DashboardDokumen() {
     const navigate = useNavigate();
@@ -75,9 +76,9 @@ export default function DashboardDokumen() {
         setIsLoading(true);
         try {
             let stageFilter = [];
-            if (activeTab === 'PEMBERKASAN') stageFilter = ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN', 'PENGUMPULAN BERKAS'];
-            if (activeTab === 'KONTRAK') stageFilter = ['TTD KONTRAK'];
-            if (activeTab === 'COE_VISA') stageFilter = ['APPLY COE', 'APPLY VISA'];
+            if (activeTab === 'PEMBERKASAN') stageFilter = ['MATCHED', 'MCU_LANJUTAN', 'PEMBERKASAN', 'PENGUMPULAN BERKAS', 'PENDIDIKAN DIKLAT'];
+            if (activeTab === 'KONTRAK') stageFilter = ['TTD KONTRAK', 'PENDIDIKAN DIKLAT'];
+            if (activeTab === 'COE_VISA') stageFilter = ['APPLY COE', 'APPLY VISA', 'PENDIDIKAN DIKLAT'];
             if (activeTab === 'KEBERANGKATAN') stageFilter = ['SIAP BERANGKAT']; 
             if (activeTab === 'SELESAI') stageFilter = ['ALUMNI']; 
 
@@ -166,7 +167,7 @@ export default function DashboardDokumen() {
                 </div>
             </aside>
 
-            <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+            <main style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', height: '100vh' }}>
                 <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
                         <h1 style={{ fontSize: '2.2rem', color: '#1e293b', margin: 0, fontWeight: 900 }}>{activeTab === 'SELESAI' ? 'Arsip Riwayat Keberangkatan' : activeTab.replace('_', ' & ')}</h1>
@@ -185,8 +186,8 @@ export default function DashboardDokumen() {
                         openOtitModal={(s) => openModal('OTIT', s)}
                         initModalTerbang={initModalTerbang}
                         handleUpdateStage={handleUpdateStage}
-                        openBerkasDigital={() => alert("Fitur Berkas Digital dikelola di Tab lain untuk efisiensi.")} // Bisa diimplementasi ulang dengan mudah
-                        openPrintMenu={() => alert("Fitur Cetak sedang dalam perbaikan.")}
+                        openBerkasDigital={(s) => openModal('BERKAS', s)}
+                        openPrintMenu={(s) => openModal('PRINT', s)}
                     />
                 </div>
 
@@ -194,6 +195,26 @@ export default function DashboardDokumen() {
                 {activeModal === 'OTIT' && <ModalOtit student={selectedStudent} masterMitra={masterMitra} masterKaisha={masterKaisha} masterKumiai={masterKumiai} masterBidang={masterBidang} onClose={closeModal} onSuccess={() => { closeModal(); fetchStudents(); }} />}
                 {activeModal === 'CHECKLIST' && <ModalChecklist student={selectedStudent} docItems={docItems} onClose={closeModal} onSuccess={() => { closeModal(); fetchStudents(); }} logActivity={logActivity} />}
                 {activeModal === 'TERBANG' && <ModalTerbang student={selectedStudent} onClose={closeModal} onSuccess={() => { closeModal(); fetchStudents(); }} logActivity={logActivity} incrementPoint={incrementPoint} />}
+
+                {activeModal === 'PRINT' && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div style={{ background: 'white', width: '100%', maxWidth: '400px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                            <div style={{ padding: '20px', background: brandNavy, color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Printer size={18} /> Menu Cetak Dokumen</h3>
+                                <button onClick={closeModal} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><X size={20}/></button>
+                            </div>
+                            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <button onClick={() => window.open(`/print-cv/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Rirekisho (CV)</button>
+                                <button onClick={() => window.open(`/print-shoushiki-10/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Shoushiki 1-10</button>
+                                <button onClick={() => window.open(`/print-shoushiki-20/${selectedStudent?.id}`, '_blank')} style={{ padding: '12px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 800 }}>Cetak Shoushiki 1-20</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeModal === 'BERKAS' && (
+                    <ModalBerkas student={selectedStudent} onClose={closeModal} onSuccess={() => { fetchStudents(); }} />
+                )}
             </main>
         </div>
     );
