@@ -6,8 +6,12 @@ export default function IllustrationCard() {
             <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e3a8a', marginBottom: '5px' }}>PERJALANAN MENUJU MASA DEPAN</div>
             <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Terus melangkah, wujudkan mimpi ke Jepang.</div>
             
-            <div style={{ width: '100%', height: '150px', background: '#e0f2fe', border: '2px dashed #bae6fd', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7', fontWeight: 'bold' }}>
-                [ Tuan bisa isi tag &lt;img /&gt; aset gambar Jepang di sini ]
+            <div style={{ width: '100%', height: '150px', borderRadius: '8px', overflow: 'hidden' }}>
+                <img 
+                    src="https://travel.rakuten.com/contents/sites/contents/files/styles/max_1300x1300/public/2023-02/cherry-blossom-viewing-guide_key.jpg?itok=Tx9Aq2Wv" 
+                    alt="Perjalanan ke Jepang" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                />
             </div>
         </div>
     );
