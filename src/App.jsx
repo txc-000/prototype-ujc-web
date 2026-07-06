@@ -29,7 +29,7 @@ import TimelinePage from './pages/TimelinePage';
 
 // ── IMPORT KOMPONEN SUPERVISOR, DIREKTUR, & SUPER ADMIN ──
 import DashboardSupervisor from './pages/Supervisor/DashboardSupervisor';
-import SpvDokumenDashboard from './pages/Supervisor/SpvDokumenDashboard'; // <-- IMPORT BARU SPV DOKUMEN
+import SpvDokumenDashboard from './pages/Supervisor/SpvDokumenDashboard';
 import DashboardDirektur from './pages/Direktur/DashboardDirektur';
 import DashboardSuperAdmin from './pages/AdminGate/DashboardSuperAdmin';
 
